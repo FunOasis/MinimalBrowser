@@ -32,9 +32,12 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
+      - name: List APK files
+        run: find app/build/outputs -name "*.apk"
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: MinimalBrowser-debug-arm64
-          path: app/build/outputs/apk/debug/MinimalBrowser-debug-arm64.apk
+          path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
