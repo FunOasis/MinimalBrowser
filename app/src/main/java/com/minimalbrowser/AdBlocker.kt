@@ -20,8 +20,6 @@ class AdBlocker private constructor(private val context: Context) {
             instance ?: synchronized(this) {
                 instance ?: AdBlocker(context.applicationContext).also { instance = it }
             }
-
-        // Force reload (call after filter update)
         fun reset() { instance = null }
     }
 
@@ -30,7 +28,7 @@ class AdBlocker private constructor(private val context: Context) {
         loadPatterns(context)
         loadCosmetic(context)
         loadCustomFilters()
-        Log.i(TAG, "Loaded ${blockedHosts.size} hosts, ${urlPatterns.size} patterns, ${cosmeticRules.size} cosmetic, ${dynamicFilters.size} dynamic")
+        Log.i(TAG, "Loaded ${blockedHosts.size} hosts, ${urlPatterns.size} patterns, ${cosmeticRules.size} cosmetic")
     }
 
     private fun loadHosts(ctx: Context) {
@@ -96,9 +94,13 @@ class AdBlocker private constructor(private val context: Context) {
         return false
     }
 
-    private fun matchesDynamic(url: String, regex: Regex): Boolean {
-    return regex.containsMatchIn(url)
-}
+    private fun matchesDynamic(url: String, pattern: String): Boolean {
+        if (!pattern.contains("*")) return url.contains(pattern)
+        val regexPattern = pattern
+            .replace(".", "\\.")
+            .replace("*", ".*")
+        return Regex(regexPattern).containsMatchIn(url)
+    }
 
     fun cosmeticCSS(): String {
         if (cosmeticRules.isEmpty()) return ""
@@ -106,7 +108,10 @@ class AdBlocker private constructor(private val context: Context) {
     }
 
     fun cosmeticScript(): String {
-        val css = cosmeticCSS().replace("\"", "\\\"").replace("\n", "\\n")
+        val css = cosmeticCSS()
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
         if (css.isBlank()) return ""
         return """
             (function() {
@@ -135,8 +140,7 @@ class AdBlocker private constructor(private val context: Context) {
         } catch (e: Exception) {
             val start = url.indexOf("://")
             if (start == -1) return null
-            val rest = url.substring(start + 3)
-            rest.split("/", "?", "#", ":").firstOrNull()?.lowercase()
+            url.substring(start + 3).split("/", "?", "#", ":").firstOrNull()?.lowercase()
         }
     }
 
