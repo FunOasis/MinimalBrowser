@@ -36,6 +36,19 @@
             android:parentActivityName=".MainActivity"
             android:label="Settings" />
 
+        <activity
+            android:name=".PasswordsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:label="Passwords" />
+
+        <provider
+            android:name="androidx.work.impl.WorkManagerInitializer"
+            android:authorities="${applicationId}.workmanager-init"
+            android:exported="false"
+            tools:node="remove"
+            xmlns:tools="http://schemas.android.com/tools" />
+
     </application>
 
 </manifest>

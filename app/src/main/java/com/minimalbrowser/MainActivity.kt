@@ -7,12 +7,9 @@ import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.webkit.WebChromeClient
-import android.webkit.WebSettings
-import android.webkit.WebView
+import android.webkit.*
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -23,14 +20,15 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var adBlocker: AdBlocker
+    private lateinit var passwordManager: PasswordManager
     private var blockedCount = 0
+    private var currentHost = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Fix toolbar merging with status bar
         ViewCompat.setOnApplyWindowInsetsListener(binding.appBarLayout) { view, insets ->
             val statusBar = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
             view.setPadding(0, statusBar, 0, 0)
@@ -40,7 +38,11 @@ class MainActivity : AppCompatActivity() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayShowTitleEnabled(false)
 
-        adBlocker = AdBlocker.get(this)
+        adBlocker     = AdBlocker.get(this)
+        passwordManager = PasswordManager(this)
+
+        // Schedule daily filter updates
+        FilterUpdateWorker.schedule(this)
 
         setupWebView()
         setupAddressBar()
@@ -53,20 +55,37 @@ class MainActivity : AppCompatActivity() {
     private fun setupWebView() {
         val wv = binding.webView
         wv.settings.apply {
-            javaScriptEnabled     = Prefs.get(this@MainActivity).jsEnabled
-            domStorageEnabled     = true
-            loadWithOverviewMode  = true
-            useWideViewPort       = true
-            builtInZoomControls   = true
-            displayZoomControls   = false
+            javaScriptEnabled    = Prefs.get(this@MainActivity).jsEnabled
+            domStorageEnabled    = true
+            loadWithOverviewMode = true
+            useWideViewPort      = true
+            builtInZoomControls  = true
+            displayZoomControls  = false
             setSupportZoom(true)
-            cacheMode             = WebSettings.LOAD_DEFAULT
-            mixedContentMode      = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            safeBrowsingEnabled   = true
-            // Fix some pages struggling to load
-            userAgentString       = userAgentString.replace("wv", "")
+            cacheMode            = WebSettings.LOAD_DEFAULT
+            mixedContentMode     = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            safeBrowsingEnabled  = true
+            userAgentString      = userAgentString.replace("wv", "")
             mediaPlaybackRequiresUserGesture = false
         }
+
+        // JavaScript interface for password save prompt
+        wv.addJavascriptInterface(object {
+            @JavascriptInterface
+            fun onPasswordDetected(username: String, password: String) {
+                runOnUiThread {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Save Password?")
+                        .setMessage("Save password for $currentHost?")
+                        .setPositiveButton("Save") { _, _ ->
+                            passwordManager.save(currentHost, username, password)
+                            Toast.makeText(this@MainActivity, "Password saved", Toast.LENGTH_SHORT).show()
+                        }
+                        .setNegativeButton("Never", null)
+                        .show()
+                }
+            }
+        }, "PRSPasswordBridge")
 
         wv.webViewClient = BlockingWebViewClient(
             adBlocker         = adBlocker,
@@ -80,7 +99,9 @@ class MainActivity : AppCompatActivity() {
                 }
             },
             customScript      = { Prefs.get(this).customScript },
-            onHomePageRequest = { showHomePage() }
+            onHomePageRequest = { showHomePage() },
+            passwordManager   = passwordManager,
+            currentHost       = { currentHost }
         )
 
         wv.webChromeClient = object : WebChromeClient() {
@@ -102,7 +123,6 @@ class MainActivity : AppCompatActivity() {
         binding.pageTitle.text = ""
         binding.blockedBadge.visibility = View.GONE
         blockedCount = 0
-        // Show keyboard on home search bar
         binding.homeSearchBar.requestFocus()
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         binding.homeSearchBar.postDelayed({
@@ -155,14 +175,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadUrl(input: String) {
-        if (input.isBlank()) {
-            showHomePage()
-            return
-        }
-
+        if (input.isBlank()) { showHomePage(); return }
         hideHomePage()
 
-        // Hide keyboard
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(binding.addressBar.windowToken, 0)
 
@@ -170,8 +185,7 @@ class MainActivity : AppCompatActivity() {
             input.startsWith("http://")  ||
             input.startsWith("https://") ||
             input.startsWith("file://")  -> input
-            input.contains(".") &&
-            !input.contains(" ")         -> "https://$input"
+            input.contains(".") && !input.contains(" ") -> "https://$input"
             else -> "https://duckduckgo.com/?q=${android.net.Uri.encode(input)}&kae=d&k1=-1"
         }
 
@@ -183,6 +197,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onPageStarted(url: String) {
+        currentHost = try {
+            java.net.URI(url).host ?: ""
+        } catch (e: Exception) { "" }
+
         runOnUiThread {
             binding.addressBar.setText(url)
             binding.btnBack.isEnabled    = binding.webView.canGoBack()
@@ -205,7 +223,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.menu_home -> { showHomePage(); true }
+            R.id.menu_home     -> { showHomePage(); true }
+            R.id.menu_passwords -> {
+                startActivity(Intent(this, PasswordsActivity::class.java))
+                true
+            }
             R.id.menu_settings -> {
                 startActivity(Intent(this, SettingsActivity::class.java))
                 true
@@ -228,16 +250,14 @@ class MainActivity : AppCompatActivity() {
                     wv.settings.userAgentString = WebSettings.getDefaultUserAgent(this)
                     item.title = "Desktop Site"
                 }
-                wv.reload()
-                true
+                wv.reload(); true
             }
             R.id.menu_about -> {
                 AlertDialog.Builder(this)
                     .setTitle("P R S")
                     .setMessage("My first browser project with Claude.\n\nBuilt with WebView + uBlock-style ad blocking.\n\nVersion 1.0")
                     .setPositiveButton("OK", null)
-                    .show()
-                true
+                    .show(); true
             }
             R.id.menu_exit -> {
                 AlertDialog.Builder(this)
@@ -245,21 +265,26 @@ class MainActivity : AppCompatActivity() {
                     .setMessage("Are you sure you want to exit?")
                     .setPositiveButton("Exit") { _, _ -> finishAffinity() }
                     .setNegativeButton("Cancel", null)
-                    .show()
-                true
+                    .show(); true
             }
             else -> super.onOptionsItemSelected(item)
         }
     }
 
+    // Fixed back button — never closes browser, always goes back or home
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (binding.homePage.visibility == View.VISIBLE) {
-            super.onBackPressed()
-        } else if (binding.webView.canGoBack()) {
-            binding.webView.goBack()
-        } else {
-            showHomePage()
+        when {
+            binding.homePage.visibility == View.VISIBLE -> {
+                // Already on home — do nothing (don't close)
+            }
+            binding.webView.canGoBack() -> {
+                binding.webView.goBack()
+            }
+            else -> {
+                // No history — go home instead of closing
+                showHomePage()
+            }
         }
     }
 
