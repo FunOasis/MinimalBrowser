@@ -15,25 +15,15 @@ class BlockingWebViewClient(
 ) : WebViewClient() {
 
     companion object {
-        private val EMPTY_RESPONSE = WebResourceResponse("text/plain", "utf-8", 204, "No Content", emptyMap(), java.io.ByteArrayInputStream(ByteArray(0)))
+        private val EMPTY_RESPONSE = WebResourceResponse("text/plain", "utf-8", null)
 
         private val WEBRTC_BLOCK_SCRIPT = """
             (function() {
-                var noOp = function() { return { then: function() {} }; };
-                var handler = {
-                    construct: function(target, args) {
-                        var pc = new target(...args);
-                        var origCreateOffer = pc.createOffer.bind(pc);
-                        return pc;
-                    }
-                };
                 try {
                     if (window.RTCPeerConnection) {
                         var OrigRTC = window.RTCPeerConnection;
                         window.RTCPeerConnection = function(config) {
-                            if (config && config.iceServers) {
-                                config.iceServers = [];
-                            }
+                            if (config && config.iceServers) config.iceServers = [];
                             return new OrigRTC(config);
                         };
                         window.RTCPeerConnection.prototype = OrigRTC.prototype;
@@ -45,7 +35,7 @@ class BlockingWebViewClient(
         private val PASSWORD_DETECT_SCRIPT = """
             (function() {
                 document.querySelectorAll('form').forEach(function(form) {
-                    form.addEventListener('submit', function(e) {
+                    form.addEventListener('submit', function() {
                         var user = '';
                         var pass = '';
                         form.querySelectorAll('input').forEach(function(inp) {
@@ -72,7 +62,10 @@ class BlockingWebViewClient(
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val url = request.url.toString()
-        if (url.startsWith("prs://")) { onHomePageRequest(); return true }
+        if (url.startsWith("prs://")) {
+            onHomePageRequest()
+            return true
+        }
         return false
     }
 
@@ -81,31 +74,22 @@ class BlockingWebViewClient(
         onPageStarted(url)
     }
 
-override fun onPageFinished(view: WebView, url: String) {
- super.onPageFinished(view, url)
+    override fun onPageFinished(view: WebView, url: String) {
+        super.onPageFinished(view, url)
 
- view.evaluateJavascript(WEBRTC_BLOCK_SCRIPT, null)
+        view.evaluateJavascript(WEBRTC_BLOCK_SCRIPT, null)
 
- val cosmeticScript = adBlocker.cosmeticScript()
- if (cosmeticScript.isNotBlank()) {
- view.evaluateJavascript(cosmeticScript, null)
- }
+        val cosmeticScript = adBlocker.cosmeticScript()
+        if (cosmeticScript.isNotBlank()) view.evaluateJavascript(cosmeticScript, null)
 
- onPageFinished(url)
+        val autofill = passwordManager.autofillScript(currentHost())
+        if (autofill.isNotBlank()) view.evaluateJavascript(autofill, null)
 
- view.postDelayed({
+        view.evaluateJavascript(PASSWORD_DETECT_SCRIPT, null)
 
- val autofill = passwordManager.autofillScript(currentHost())
- if (autofill.isNotBlank()) {
- view.evaluateJavascript(autofill, null)
- }
+        val userScript = customScript()
+        if (userScript.isNotBlank()) view.evaluateJavascript(userScript, null)
 
- view.evaluateJavascript(PASSWORD_DETECT_SCRIPT, null)
-
- val userScript = customScript()
- if (userScript.isNotBlank()) {
- view.evaluateJavascript(userScript, null)
- }
-
- }, 800)
+        onPageFinished(url)
+    }
 }
