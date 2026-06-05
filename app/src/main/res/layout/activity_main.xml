@@ -112,44 +112,54 @@
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- Home page -->
-    <LinearLayout
+    <!-- Home page: scrolls up when keyboard opens -->
+    <ScrollView
         android:id="@+id/homePage"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:gravity="center"
         android:background="#000000"
         android:visibility="gone"
+        android:fillViewport="true"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
-        <TextView
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="P R S"
-            android:textColor="#FFFFFF"
-            android:textSize="36sp"
-            android:letterSpacing="0.3"
-            android:layout_marginBottom="48dp"
-            android:fontFamily="serif" />
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:paddingTop="120dp"
+            android:paddingBottom="40dp">
 
-        <EditText
-            android:id="@+id/homeSearchBar"
-            android:layout_width="320dp"
-            android:layout_height="54dp"
-            android:background="@drawable/home_search_bg"
-            android:paddingHorizontal="20dp"
-            android:textSize="15sp"
-            android:textColor="#FFFFFF"
-            android:hint="Search the web"
-            android:singleLine="true"
-            android:inputType="text"
-            android:imeOptions="actionSearch"
-            android:focusable="true"
-            android:focusableInTouchMode="true"
-            android:theme="@style/AddressBarTheme" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="P R S"
+                android:textColor="#FFFFFF"
+                android:textSize="36sp"
+                android:letterSpacing="0.3"
+                android:layout_marginBottom="48dp"
+                android:fontFamily="serif" />
 
-    </LinearLayout>
+            <EditText
+                android:id="@+id/homeSearchBar"
+                android:layout_width="320dp"
+                android:layout_height="54dp"
+                android:background="@drawable/home_search_bg"
+                android:paddingHorizontal="20dp"
+                android:textSize="15sp"
+                android:textColor="#FFFFFF"
+                android:hint="Search the web"
+                android:singleLine="true"
+                android:inputType="text"
+                android:imeOptions="actionSearch"
+                android:cursorVisible="false"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:theme="@style/AddressBarTheme" />
+
+        </LinearLayout>
+
+    </ScrollView>
 
     <!-- WebView -->
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout

@@ -11,6 +11,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.*
 import android.widget.Toast
+import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -21,6 +22,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var adBlocker: AdBlocker
     private lateinit var passwordManager: PasswordManager
+    private lateinit var historyManager: HistoryManager
+    private lateinit var tabManager: TabManager
     private var blockedCount = 0
     private var currentHost = ""
 
@@ -29,47 +32,108 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        ViewCompat.setOnApplyWindowInsetsListener(binding.appBarLayout) { view, insets ->
+        // Fix toolbar/status bar overlap
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
             val statusBar = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
-            view.setPadding(0, statusBar, 0, 0)
+            binding.appBarLayout.setPadding(0, statusBar, 0, 0)
             insets
         }
 
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayShowTitleEnabled(false)
 
-        adBlocker     = AdBlocker.get(this)
+        adBlocker       = AdBlocker.get(this)
         passwordManager = PasswordManager(this)
+        historyManager  = HistoryManager(this)
+        tabManager      = TabManager(this)
 
-        // Schedule daily filter updates
         FilterUpdateWorker.schedule(this)
 
         setupWebView()
         setupAddressBar()
         setupSwipeRefresh()
+        setupBackHandler()
 
-        val url = intent?.data?.toString() ?: Prefs.get(this).homepage
-        loadUrl(url)
+        // Restore state after rotation
+        if (savedInstanceState != null) {
+            val url = savedInstanceState.getString("current_url")
+            if (!url.isNullOrBlank() && url != "prs://home") {
+                loadUrl(url)
+            } else {
+                showHomePage()
+            }
+        } else {
+            val intentUrl = intent?.data?.toString()
+            if (!intentUrl.isNullOrBlank()) loadUrl(intentUrl)
+            else showHomePage()
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        val url = binding.webView.url
+        if (!url.isNullOrBlank()) outState.putString("current_url", url)
+    }
+
+    private fun setupBackHandler() {
+        onBackPressedDispatcher.addCallback(this) {
+            when {
+                binding.homePage.visibility == View.VISIBLE -> {
+                    // On home page — do nothing, don't close
+                }
+                binding.webView.canGoBack() -> {
+                    binding.webView.goBack()
+                }
+                else -> {
+                    showHomePage()
+                }
+            }
+        }
     }
 
     private fun setupWebView() {
         val wv = binding.webView
         wv.settings.apply {
-            javaScriptEnabled    = Prefs.get(this@MainActivity).jsEnabled
-            domStorageEnabled    = true
-            loadWithOverviewMode = true
-            useWideViewPort      = true
-            builtInZoomControls  = true
-            displayZoomControls  = false
+            javaScriptEnabled               = Prefs.get(this@MainActivity).jsEnabled
+            domStorageEnabled               = true
+            loadWithOverviewMode            = true
+            useWideViewPort                 = true
+            builtInZoomControls             = true
+            displayZoomControls             = false
             setSupportZoom(true)
-            cacheMode            = WebSettings.LOAD_DEFAULT
-            mixedContentMode     = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            safeBrowsingEnabled  = true
-            userAgentString      = userAgentString.replace("wv", "")
+            cacheMode                       = WebSettings.LOAD_DEFAULT
+            mixedContentMode                = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            safeBrowsingEnabled             = true
+            userAgentString                 = userAgentString.replace("wv", "")
             mediaPlaybackRequiresUserGesture = false
+            // RAM optimization
+            setRenderPriority(WebSettings.RenderPriority.HIGH)
+            databaseEnabled                 = true
         }
 
-        // JavaScript interface for password save prompt
+        // Download manager integration
+        wv.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+            try {
+                val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
+                request.setMimeType(mimeType)
+                request.addRequestHeader("User-Agent", userAgent)
+                request.setDescription("Downloading file...")
+                val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+                request.setTitle(fileName)
+                request.setNotificationVisibility(
+                    android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                request.setDestinationInExternalPublicDir(
+                    android.os.Environment.DIRECTORY_DOWNLOADS, fileName)
+                val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
+                dm.enqueue(request)
+                Toast.makeText(this, "Downloading $fileName", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                // Fallback: open in external browser
+                val i = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                startActivity(i)
+            }
+        }
+
         wv.addJavascriptInterface(object {
             @JavascriptInterface
             fun onPasswordDetected(username: String, password: String) {
@@ -116,18 +180,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showHomePage() {
+    fun showHomePage() {
         binding.webView.visibility  = View.GONE
         binding.homePage.visibility = View.VISIBLE
         binding.addressBar.setText("")
-        binding.pageTitle.text = ""
+        binding.pageTitle.text      = ""
         binding.blockedBadge.visibility = View.GONE
         blockedCount = 0
-        binding.homeSearchBar.requestFocus()
-        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        binding.homeSearchBar.postDelayed({
-            imm.showSoftInput(binding.homeSearchBar, InputMethodManager.SHOW_IMPLICIT)
-        }, 100)
     }
 
     private fun hideHomePage() {
@@ -174,8 +233,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadUrl(input: String) {
-        if (input.isBlank()) { showHomePage(); return }
+    fun loadUrl(input: String) {
+        if (input.isBlank() || input == "prs://home") {
+            showHomePage()
+            return
+        }
+
         hideHomePage()
 
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
@@ -197,10 +260,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onPageStarted(url: String) {
-        currentHost = try {
-            java.net.URI(url).host ?: ""
-        } catch (e: Exception) { "" }
-
+        if (url == "prs://home" || url.isBlank()) return
+        currentHost = try { java.net.URI(url).host ?: "" } catch (e: Exception) { "" }
         runOnUiThread {
             binding.addressBar.setText(url)
             binding.btnBack.isEnabled    = binding.webView.canGoBack()
@@ -209,6 +270,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onPageFinished(url: String) {
+        if (url == "prs://home" || url.isBlank()) return
+        // Save to history
+        val title = binding.webView.title ?: url
+        historyManager.save(url, title)
         runOnUiThread {
             binding.swipeRefresh.isRefreshing = false
             binding.btnBack.isEnabled    = binding.webView.canGoBack()
@@ -223,24 +288,18 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.menu_home     -> { showHomePage(); true }
-            R.id.menu_passwords -> {
-                startActivity(Intent(this, PasswordsActivity::class.java))
-                true
-            }
-            R.id.menu_settings -> {
-                startActivity(Intent(this, SettingsActivity::class.java))
-                true
-            }
-            R.id.menu_stats -> {
+            R.id.menu_home      -> { showHomePage(); true }
+            R.id.menu_passwords -> { startActivity(Intent(this, PasswordsActivity::class.java)); true }
+            R.id.menu_history   -> { startActivity(Intent(this, HistoryActivity::class.java)); true }
+            R.id.menu_tabs      -> { startActivity(Intent(this, TabsActivity::class.java)); true }
+            R.id.menu_settings  -> { startActivity(Intent(this, SettingsActivity::class.java)); true }
+            R.id.menu_stats     -> {
                 val s = adBlocker.stats()
                 Toast.makeText(this,
-                    "Blocked: $blockedCount requests this page\n" +
-                    "Rules: ${s.hosts} hosts · ${s.patterns} patterns",
-                    Toast.LENGTH_LONG).show()
-                true
+                    "Blocked: $blockedCount requests\nRules: ${s.hosts} hosts · ${s.patterns} patterns",
+                    Toast.LENGTH_LONG).show(); true
             }
-            R.id.menu_desktop -> {
+            R.id.menu_desktop   -> {
                 val wv = binding.webView
                 val ua = wv.settings.userAgentString
                 if (ua.contains("Mobile")) {
@@ -252,42 +311,32 @@ class MainActivity : AppCompatActivity() {
                 }
                 wv.reload(); true
             }
-            R.id.menu_about -> {
+            R.id.menu_about     -> {
                 AlertDialog.Builder(this)
                     .setTitle("P R S")
                     .setMessage("My first browser project with Claude.\n\nBuilt with WebView + uBlock-style ad blocking.\n\nVersion 1.0")
-                    .setPositiveButton("OK", null)
-                    .show(); true
+                    .setPositiveButton("OK", null).show(); true
             }
-            R.id.menu_exit -> {
+            R.id.menu_exit      -> {
                 AlertDialog.Builder(this)
                     .setTitle("Exit")
                     .setMessage("Are you sure you want to exit?")
                     .setPositiveButton("Exit") { _, _ -> finishAffinity() }
-                    .setNegativeButton("Cancel", null)
-                    .show(); true
+                    .setNegativeButton("Cancel", null).show(); true
             }
             else -> super.onOptionsItemSelected(item)
         }
     }
 
-    // Fixed back button — never closes browser, always goes back or home
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        when {
-            binding.homePage.visibility == View.VISIBLE -> {
-                // Already on home — do nothing (don't close)
-            }
-            binding.webView.canGoBack() -> {
-                binding.webView.goBack()
-            }
-            else -> {
-                // No history — go home instead of closing
-                showHomePage()
-            }
-        }
-    }
-
     fun onNavBack(v: View)    { if (binding.webView.canGoBack())    binding.webView.goBack() }
     fun onNavForward(v: View) { if (binding.webView.canGoForward()) binding.webView.goForward() }
+
+    // RAM optimization — pause WebView when app goes to background
+    override fun onPause()  { super.onPause();  binding.webView.onPause() }
+    override fun onResume() { super.onResume(); binding.webView.onResume() }
+    override fun onDestroy() {
+        binding.webView.stopLoading()
+        binding.webView.destroy()
+        super.onDestroy()
+    }
 }
