@@ -7,7 +7,6 @@ class Prefs private constructor(private val prefs: SharedPreferences) {
 
     companion object {
         private const val NAME = "minimal_browser_prefs"
-
         @Volatile private var instance: Prefs? = null
         fun get(context: Context): Prefs =
             instance ?: synchronized(this) {
@@ -19,7 +18,7 @@ class Prefs private constructor(private val prefs: SharedPreferences) {
     }
 
     var homepage: String
-        get() = prefs.getString("homepage", "https://search.brave.com") ?: "https://search.brave.com"
+        get() = prefs.getString("homepage", "prs://home") ?: "prs://home"
         set(v) = prefs.edit().putString("homepage", v).apply()
 
     var jsEnabled: Boolean
@@ -30,7 +29,11 @@ class Prefs private constructor(private val prefs: SharedPreferences) {
         get() = prefs.getBoolean("adblock_enabled", true)
         set(v) = prefs.edit().putBoolean("adblock_enabled", v).apply()
 
-    var darkMode: Boolean
-        get() = prefs.getBoolean("dark_mode", false)
-        set(v) = prefs.edit().putBoolean("dark_mode", v).apply()
+    var customScript: String
+        get() = prefs.getString("custom_script", "") ?: ""
+        set(v) = prefs.edit().putString("custom_script", v).apply()
+
+    var customFilters: String
+        get() = prefs.getString("custom_filters", "") ?: ""
+        set(v) = prefs.edit().putString("custom_filters", v).apply()
 }

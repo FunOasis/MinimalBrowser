@@ -34,18 +34,14 @@ class MainActivity : AppCompatActivity() {
         setupAddressBar()
         setupSwipeRefresh()
 
-        // Handle intent URLs (e.g. opened from another app)
         val url = intent?.data?.toString() ?: Prefs.get(this).homepage
         loadUrl(url)
     }
 
-    // ── WebView setup ─────────────────────────────────────────────────────────
-
     private fun setupWebView() {
         val wv = binding.webView
-
         wv.settings.apply {
-            javaScriptEnabled        = true
+            javaScriptEnabled        = Prefs.get(this@MainActivity).jsEnabled
             domStorageEnabled        = true
             loadWithOverviewMode     = true
             useWideViewPort          = true
@@ -54,24 +50,22 @@ class MainActivity : AppCompatActivity() {
             setSupportZoom(true)
             cacheMode                = WebSettings.LOAD_DEFAULT
             mixedContentMode         = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            // Privacy: disable telemetry leakage
             safeBrowsingEnabled      = true
         }
 
-        // Respect user's JS toggle
-        wv.settings.javaScriptEnabled = Prefs.get(this).jsEnabled
-
         wv.webViewClient = BlockingWebViewClient(
-            adBlocker       = adBlocker,
-            onPageStarted   = { url -> onPageStarted(url) },
-            onPageFinished  = { url -> onPageFinished(url) },
+            adBlocker        = adBlocker,
+            onPageStarted    = { url -> onPageStarted(url) },
+            onPageFinished   = { url -> onPageFinished(url) },
             onBlockedRequest = {
                 runOnUiThread {
                     blockedCount++
                     binding.blockedBadge.text = blockedCount.toString()
                     binding.blockedBadge.visibility = View.VISIBLE
                 }
-            }
+            },
+            customScript     = { Prefs.get(this).customScript },
+            onHomePageRequest = { showHomePage() }
         )
 
         wv.webChromeClient = object : WebChromeClient() {
@@ -80,14 +74,25 @@ class MainActivity : AppCompatActivity() {
                 binding.progressBar.visibility =
                     if (newProgress < 100) View.VISIBLE else View.GONE
             }
-
             override fun onReceivedTitle(view: WebView, title: String) {
-                binding.pageTitle.text = title
+                if (title != "P R S") binding.pageTitle.text = title
             }
         }
     }
 
-    // ── Address bar ───────────────────────────────────────────────────────────
+    private fun showHomePage() {
+        binding.webView.visibility = View.GONE
+        binding.homePage.visibility = View.VISIBLE
+        binding.addressBar.setText("")
+        binding.pageTitle.text = ""
+        binding.blockedBadge.visibility = View.GONE
+        blockedCount = 0
+    }
+
+    private fun hideHomePage() {
+        binding.homePage.visibility = View.GONE
+        binding.webView.visibility = View.VISIBLE
+    }
 
     private fun setupAddressBar() {
         binding.addressBar.setOnEditorActionListener { _, actionId, event ->
@@ -105,9 +110,17 @@ class MainActivity : AppCompatActivity() {
         binding.addressBar.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) binding.addressBar.selectAll()
         }
-    }
 
-    // ── SwipeRefresh ──────────────────────────────────────────────────────────
+        // Home search bar
+        binding.homeSearchBar.setOnEditorActionListener { _, actionId, event ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH ||
+                event?.keyCode == KeyEvent.KEYCODE_ENTER) {
+                loadUrl(binding.homeSearchBar.text.toString().trim())
+                binding.homeSearchBar.setText("")
+                true
+            } else false
+        }
+    }
 
     private fun setupSwipeRefresh() {
         binding.swipeRefresh.setOnRefreshListener {
@@ -117,31 +130,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Navigation helpers ────────────────────────────────────────────────────
-
     private fun loadUrl(input: String) {
+        if (input.isBlank()) {
+            showHomePage()
+            return
+        }
+
+        hideHomePage()
+
         val url = when {
-            input.isBlank()                          -> Prefs.get(this).homepage
             input.startsWith("http://")  ||
             input.startsWith("https://") ||
-            input.startsWith("file://")              -> input
-            input.contains(".")  &&
-            !input.contains(" ")                     -> "https://$input"
-            else -> "https://search.brave.com/search?q=${
-                android.net.Uri.encode(input)
-            }"
+            input.startsWith("file://")  -> input
+            input.contains(".") &&
+            !input.contains(" ")         -> "https://$input"
+            else -> "https://duckduckgo.com/?q=${android.net.Uri.encode(input)}&kae=d&k1=-1"
         }
 
         blockedCount = 0
         binding.blockedBadge.visibility = View.GONE
         binding.webView.loadUrl(url)
+        binding.addressBar.setText(url)
         binding.addressBar.clearFocus()
     }
 
     private fun onPageStarted(url: String) {
         runOnUiThread {
             binding.addressBar.setText(url)
-            binding.btnBack.isEnabled = binding.webView.canGoBack()
+            binding.btnBack.isEnabled    = binding.webView.canGoBack()
             binding.btnForward.isEnabled = binding.webView.canGoForward()
         }
     }
@@ -149,12 +165,10 @@ class MainActivity : AppCompatActivity() {
     private fun onPageFinished(url: String) {
         runOnUiThread {
             binding.swipeRefresh.isRefreshing = false
-            binding.btnBack.isEnabled = binding.webView.canGoBack()
+            binding.btnBack.isEnabled    = binding.webView.canGoBack()
             binding.btnForward.isEnabled = binding.webView.canGoForward()
         }
     }
-
-    // ── Back / Forward buttons ────────────────────────────────────────────────
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.browser_menu, menu)
@@ -169,12 +183,14 @@ class MainActivity : AppCompatActivity() {
             }
             R.id.menu_stats -> {
                 val s = adBlocker.stats()
-                Toast.makeText(
-                    this,
-                    "Blocked this page: $blockedCount requests\n" +
-                    "Rules: ${s.hosts} hosts · ${s.patterns} patterns · ${s.cosmetic} cosmetic",
-                    Toast.LENGTH_LONG
-                ).show()
+                Toast.makeText(this,
+                    "Blocked: $blockedCount requests this page\n" +
+                    "Rules: ${s.hosts} hosts · ${s.patterns} patterns",
+                    Toast.LENGTH_LONG).show()
+                true
+            }
+            R.id.menu_home -> {
+                showHomePage()
                 true
             }
             R.id.menu_desktop -> {
@@ -194,17 +210,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // System back → navigate WebView history
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (binding.webView.canGoBack()) {
+        if (binding.homePage.visibility == View.VISIBLE) {
+            super.onBackPressed()
+        } else if (binding.webView.canGoBack()) {
             binding.webView.goBack()
         } else {
-            super.onBackPressed()
+            showHomePage()
         }
     }
 
-    // Handle nav bar back/forward buttons in toolbar
     fun onNavBack(v: View)    { if (binding.webView.canGoBack())    binding.webView.goBack() }
     fun onNavForward(v: View) { if (binding.webView.canGoForward()) binding.webView.goForward() }
 }

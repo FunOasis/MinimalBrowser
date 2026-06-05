@@ -3,21 +3,22 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#000000">
 
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:theme="@style/ThemeOverlay.MaterialComponents.ActionBar">
+        android:background="#000000"
+        app:elevation="0dp">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            app:popupTheme="@style/ThemeOverlay.MaterialComponents.Light">
+            android:background="#000000">
 
-            <!-- Nav: Back -->
             <ImageButton
                 android:id="@+id/btnBack"
                 android:layout_width="40dp"
@@ -26,9 +27,9 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Back"
                 android:onClick="onNavBack"
-                android:enabled="false" />
+                android:enabled="false"
+                android:tint="#FFFFFF" />
 
-            <!-- Nav: Forward -->
             <ImageButton
                 android:id="@+id/btnForward"
                 android:layout_width="40dp"
@@ -38,29 +39,29 @@
                 android:contentDescription="Forward"
                 android:onClick="onNavForward"
                 android:enabled="false"
-                android:layout_marginStart="4dp" />
+                android:layout_marginStart="4dp"
+                android:tint="#FFFFFF" />
 
-            <!-- Address bar + blocked badge -->
             <FrameLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginHorizontal="8dp">
 
-                <com.google.android.material.textfield.TextInputEditText
+                <EditText
                     android:id="@+id/addressBar"
                     android:layout_width="match_parent"
-                    android:layout_height="40dp"
+                    android:layout_height="38dp"
                     android:background="@drawable/address_bar_bg"
                     android:paddingHorizontal="12dp"
-                    android:paddingVertical="8dp"
-                    android:textSize="14sp"
+                    android:textSize="13sp"
+                    android:textColor="#FFFFFF"
+                    android:hint="Search or enter URL"
+                    android:hintTextColor="#666666"
                     android:singleLine="true"
                     android:inputType="textUri"
-                    android:imeOptions="actionGo"
-                    android:hint="Search or enter URL" />
+                    android:imeOptions="actionGo" />
 
-                <!-- Blocked requests badge -->
                 <TextView
                     android:id="@+id/blockedBadge"
                     android:layout_width="wrap_content"
@@ -76,41 +77,76 @@
 
             </FrameLayout>
 
-            <!-- Go button -->
             <ImageButton
                 android:id="@+id/btnGo"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:src="@drawable/ic_search"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Go" />
+                android:contentDescription="Go"
+                android:tint="#FFFFFF" />
 
         </androidx.appcompat.widget.Toolbar>
 
-        <!-- Page title bar -->
         <TextView
             android:id="@+id/pageTitle"
             android:layout_width="match_parent"
-            android:layout_height="20dp"
+            android:layout_height="18dp"
             android:paddingHorizontal="16dp"
             android:textSize="11sp"
+            android:textColor="#888888"
             android:singleLine="true"
-            android:ellipsize="end"
-            android:alpha="0.6" />
+            android:ellipsize="end" />
 
-        <!-- Loading progress -->
         <ProgressBar
             android:id="@+id/progressBar"
             style="@style/Widget.AppCompat.ProgressBar.Horizontal"
             android:layout_width="match_parent"
-            android:layout_height="3dp"
+            android:layout_height="2dp"
             android:max="100"
             android:visibility="gone"
-            android:progressTint="@color/accent" />
+            android:progressTint="#FFFFFF" />
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- WebView with pull-to-refresh -->
+    <!-- Home page -->
+    <LinearLayout
+        android:id="@+id/homePage"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="#000000"
+        android:visibility="gone"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="P R S"
+            android:textColor="#FFFFFF"
+            android:textSize="36sp"
+            android:letterSpacing="0.3"
+            android:layout_marginBottom="40dp"
+            android:fontFamily="serif" />
+
+        <EditText
+            android:id="@+id/homeSearchBar"
+            android:layout_width="320dp"
+            android:layout_height="52dp"
+            android:background="@drawable/home_search_bg"
+            android:paddingHorizontal="20dp"
+            android:textSize="15sp"
+            android:textColor="#FFFFFF"
+            android:hint="Search the web"
+            android:hintTextColor="#555555"
+            android:singleLine="true"
+            android:inputType="text"
+            android:imeOptions="actionSearch" />
+
+    </LinearLayout>
+
+    <!-- WebView -->
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
         android:id="@+id/swipeRefresh"
         android:layout_width="match_parent"
@@ -120,7 +156,8 @@
         <WebView
             android:id="@+id/webView"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="match_parent"
+            android:background="#000000" />
 
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
