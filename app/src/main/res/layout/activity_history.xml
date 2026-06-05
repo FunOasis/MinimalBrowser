@@ -22,7 +22,7 @@
         android:id="@+id/btnClearHistory"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:margin="16dp"
+        android:layout_margin="16dp"
         android:text="Clear All History"
         android:backgroundTint="#222222"
         android:textColor="#FF4444" />

@@ -22,7 +22,7 @@
         android:id="@+id/btnNewTab"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:margin="16dp"
+        android:layout_margin="16dp"
         android:text="+ New Tab"
         android:backgroundTint="#FFFFFF"
         android:textColor="#000000" />
