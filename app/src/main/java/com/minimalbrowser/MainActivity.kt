@@ -1,17 +1,22 @@
 package com.minimalbrowser
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.minimalbrowser.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
@@ -24,6 +29,13 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Fix toolbar merging with status bar
+        ViewCompat.setOnApplyWindowInsetsListener(binding.appBarLayout) { view, insets ->
+            val statusBar = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            view.setPadding(0, statusBar, 0, 0)
+            insets
+        }
 
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayShowTitleEnabled(false)
@@ -41,30 +53,33 @@ class MainActivity : AppCompatActivity() {
     private fun setupWebView() {
         val wv = binding.webView
         wv.settings.apply {
-            javaScriptEnabled        = Prefs.get(this@MainActivity).jsEnabled
-            domStorageEnabled        = true
-            loadWithOverviewMode     = true
-            useWideViewPort          = true
-            builtInZoomControls      = true
-            displayZoomControls      = false
+            javaScriptEnabled     = Prefs.get(this@MainActivity).jsEnabled
+            domStorageEnabled     = true
+            loadWithOverviewMode  = true
+            useWideViewPort       = true
+            builtInZoomControls   = true
+            displayZoomControls   = false
             setSupportZoom(true)
-            cacheMode                = WebSettings.LOAD_DEFAULT
-            mixedContentMode         = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            safeBrowsingEnabled      = true
+            cacheMode             = WebSettings.LOAD_DEFAULT
+            mixedContentMode      = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            safeBrowsingEnabled   = true
+            // Fix some pages struggling to load
+            userAgentString       = userAgentString.replace("wv", "")
+            mediaPlaybackRequiresUserGesture = false
         }
 
         wv.webViewClient = BlockingWebViewClient(
-            adBlocker        = adBlocker,
-            onPageStarted    = { url -> onPageStarted(url) },
-            onPageFinished   = { url -> onPageFinished(url) },
-            onBlockedRequest = {
+            adBlocker         = adBlocker,
+            onPageStarted     = { url -> onPageStarted(url) },
+            onPageFinished    = { url -> onPageFinished(url) },
+            onBlockedRequest  = {
                 runOnUiThread {
                     blockedCount++
                     binding.blockedBadge.text = blockedCount.toString()
                     binding.blockedBadge.visibility = View.VISIBLE
                 }
             },
-            customScript     = { Prefs.get(this).customScript },
+            customScript      = { Prefs.get(this).customScript },
             onHomePageRequest = { showHomePage() }
         )
 
@@ -81,17 +96,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showHomePage() {
-        binding.webView.visibility = View.GONE
+        binding.webView.visibility  = View.GONE
         binding.homePage.visibility = View.VISIBLE
         binding.addressBar.setText("")
         binding.pageTitle.text = ""
         binding.blockedBadge.visibility = View.GONE
         blockedCount = 0
+        // Show keyboard on home search bar
+        binding.homeSearchBar.requestFocus()
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        binding.homeSearchBar.postDelayed({
+            imm.showSoftInput(binding.homeSearchBar, InputMethodManager.SHOW_IMPLICIT)
+        }, 100)
     }
 
     private fun hideHomePage() {
         binding.homePage.visibility = View.GONE
-        binding.webView.visibility = View.VISIBLE
+        binding.webView.visibility  = View.VISIBLE
     }
 
     private fun setupAddressBar() {
@@ -111,12 +132,15 @@ class MainActivity : AppCompatActivity() {
             if (hasFocus) binding.addressBar.selectAll()
         }
 
-        // Home search bar
         binding.homeSearchBar.setOnEditorActionListener { _, actionId, event ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH ||
+                actionId == EditorInfo.IME_ACTION_GO ||
                 event?.keyCode == KeyEvent.KEYCODE_ENTER) {
-                loadUrl(binding.homeSearchBar.text.toString().trim())
-                binding.homeSearchBar.setText("")
+                val query = binding.homeSearchBar.text.toString().trim()
+                if (query.isNotBlank()) {
+                    binding.homeSearchBar.setText("")
+                    loadUrl(query)
+                }
                 true
             } else false
         }
@@ -137,6 +161,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         hideHomePage()
+
+        // Hide keyboard
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(binding.addressBar.windowToken, 0)
 
         val url = when {
             input.startsWith("http://")  ||
@@ -177,6 +205,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.menu_home -> { showHomePage(); true }
             R.id.menu_settings -> {
                 startActivity(Intent(this, SettingsActivity::class.java))
                 true
@@ -187,10 +216,6 @@ class MainActivity : AppCompatActivity() {
                     "Blocked: $blockedCount requests this page\n" +
                     "Rules: ${s.hosts} hosts · ${s.patterns} patterns",
                     Toast.LENGTH_LONG).show()
-                true
-            }
-            R.id.menu_home -> {
-                showHomePage()
                 true
             }
             R.id.menu_desktop -> {
@@ -204,6 +229,23 @@ class MainActivity : AppCompatActivity() {
                     item.title = "Desktop Site"
                 }
                 wv.reload()
+                true
+            }
+            R.id.menu_about -> {
+                AlertDialog.Builder(this)
+                    .setTitle("P R S")
+                    .setMessage("My first browser project with Claude.\n\nBuilt with WebView + uBlock-style ad blocking.\n\nVersion 1.0")
+                    .setPositiveButton("OK", null)
+                    .show()
+                true
+            }
+            R.id.menu_exit -> {
+                AlertDialog.Builder(this)
+                    .setTitle("Exit")
+                    .setMessage("Are you sure you want to exit?")
+                    .setPositiveButton("Exit") { _, _ -> finishAffinity() }
+                    .setNegativeButton("Cancel", null)
+                    .show()
                 true
             }
             else -> super.onOptionsItemSelected(item)

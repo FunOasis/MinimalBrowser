@@ -8,4 +8,10 @@
         <item name="android:statusBarColor">#000000</item>
         <item name="android:navigationBarColor">#000000</item>
     </style>
+
+    <style name="AddressBarTheme">
+        <item name="colorControlActivated">#FFFFFF</item>
+        <item name="colorControlHighlight">#FFFFFF</item>
+        <item name="android:textColorHint">#555555</item>
+    </style>
 </resources>
