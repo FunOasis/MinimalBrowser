@@ -1,6 +1,6 @@
 plugins {
     id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.android' version '1.9.0'
 }
 
 android {
@@ -13,7 +13,6 @@ android {
         targetSdk 36
         versionCode 1
         versionName "1.0"
-    }
 
     buildTypes {
         release {
@@ -21,9 +20,7 @@ android {
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
-        debug {
-            debuggable true
-        }
+        debug { debuggable true }
     }
 
     compileOptions {
@@ -31,13 +28,9 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = '17'
-    }
+    kotlinOptions { jvmTarget = '17' }
 
-    buildFeatures {
-        viewBinding true
-    }
+    buildFeatures { viewBinding true }
 }
 
 dependencies {

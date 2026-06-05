@@ -96,11 +96,9 @@ class AdBlocker private constructor(private val context: Context) {
         return false
     }
 
-    private fun matchesDynamic(url: String, pattern: String): Boolean {
-        if (!pattern.contains("*")) return url.contains(pattern)
-        val regex = pattern.replace(".", "\\.").replace("*", ".*")
-        return Regex(regex).containsMatchIn(url)
-    }
+    private fun matchesDynamic(url: String, regex: Regex): Boolean {
+    return regex.containsMatchIn(url)
+}
 
     fun cosmeticCSS(): String {
         if (cosmeticRules.isEmpty()) return ""

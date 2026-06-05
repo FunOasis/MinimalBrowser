@@ -82,30 +82,30 @@ class BlockingWebViewClient(
     }
 
 override fun onPageFinished(view: WebView, url: String) {
- super.onPageFinished(view, url)
+    super.onPageFinished(view, url)
 
- view.evaluateJavascript(WEBRTC_BLOCK_SCRIPT, null)
+    view.evaluateJavascript(WEBRTC_BLOCK_SCRIPT, null)
 
- val cosmeticScript = adBlocker.cosmeticScript()
- if (cosmeticScript.isNotBlank()) {
- view.evaluateJavascript(cosmeticScript, null)
- }
+    val cosmeticScript = adBlocker.cosmeticScript()
+    if (cosmeticScript.isNotBlank()) {
+        view.evaluateJavascript(cosmeticScript, null)
+    }
 
- onPageFinished(url)
+    onPageFinished(url)
 
- view.postDelayed({
+    view.postDelayed({
 
- val autofill = passwordManager.autofillScript(currentHost())
- if (autofill.isNotBlank()) {
- view.evaluateJavascript(autofill, null)
- }
+        val autofill = passwordManager.autofillScript(currentHost())
+        if (autofill.isNotBlank()) {
+            view.evaluateJavascript(autofill, null)
+        }
 
- view.evaluateJavascript(PASSWORD_DETECT_SCRIPT, null)
+        view.evaluateJavascript(PASSWORD_DETECT_SCRIPT, null)
 
- val userScript = customScript()
- if (userScript.isNotBlank()) {
- view.evaluateJavascript(userScript, null)
- }
+        val userScript = customScript()
+        if (userScript.isNotBlank()) {
+            view.evaluateJavascript(userScript, null)
+        }
 
- }, 800)
+    }, 800)
 }

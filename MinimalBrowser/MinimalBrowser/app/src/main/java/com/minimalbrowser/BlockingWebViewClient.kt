@@ -18,7 +18,7 @@ class BlockingWebViewClient(
 
     companion object {
         private const val TAG = "BlockingWebViewClient"
-        private val EMPTY_RESPONSE = WebResourceResponse("text/plain", "utf-8", null)
+        private val EMPTY_RESPONSE = WebResourceResponse("text/plain", "utf-8", java.io.ByteArrayInputStream("".toByteArray()))
     }
 
     // ── Request interception ──────────────────────────────────────────────────

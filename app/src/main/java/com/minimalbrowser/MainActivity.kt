@@ -332,11 +332,17 @@ class MainActivity : AppCompatActivity() {
     fun onNavForward(v: View) { if (binding.webView.canGoForward()) binding.webView.goForward() }
 
     // RAM optimization — pause WebView when app goes to background
-    override fun onPause()  { super.onPause();  binding.webView.onPause() }
-    override fun onResume() { super.onResume(); binding.webView.onResume() }
+    override fun onPause()  { super.onPause();  binding.webView.onPause(); binding.webView.pauseTimers() }
+    override fun onResume() { super.onResume(); binding.webView.onResume(); binding.webView.resumeTimers() }
     override fun onDestroy() {
-        binding.webView.stopLoading()
-        binding.webView.destroy()
-        super.onDestroy()
+        binding.webView.apply {
+            stopLoading()
+            webViewClient = null
+            webChromeClient = null
+            removeAllViews()
+            clearHistory()
+            onPause()
+            destroy()
+       }
+       super.onDestroy()
     }
-}
