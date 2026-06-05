@@ -4,23 +4,20 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000"
-    android:fitsSystemWindows="true">
+    android:background="#000000">
 
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="#000000"
-        android:fitsSystemWindows="true"
         app:elevation="0dp">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="60dp"
-            android:background="#000000"
-            android:minHeight="60dp">
+            android:background="#000000">
 
             <ImageButton
                 android:id="@+id/btnBack"
@@ -112,14 +109,15 @@
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- Home page: scrolls up when keyboard opens -->
-    <ScrollView
+    <!-- Home page — simple FrameLayout, no ScrollView intercepting touches -->
+    <FrameLayout
         android:id="@+id/homePage"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="#000000"
         android:visibility="gone"
-        android:fillViewport="true"
+        android:clickable="true"
+        android:focusable="true"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <LinearLayout
@@ -127,8 +125,8 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:gravity="center_horizontal"
-            android:paddingTop="120dp"
-            android:paddingBottom="40dp">
+            android:layout_gravity="center"
+            android:paddingHorizontal="32dp">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -142,7 +140,7 @@
 
             <EditText
                 android:id="@+id/homeSearchBar"
-                android:layout_width="320dp"
+                android:layout_width="match_parent"
                 android:layout_height="54dp"
                 android:background="@drawable/home_search_bg"
                 android:paddingHorizontal="20dp"
@@ -152,14 +150,14 @@
                 android:singleLine="true"
                 android:inputType="text"
                 android:imeOptions="actionSearch"
-                android:cursorVisible="false"
                 android:focusable="true"
                 android:focusableInTouchMode="true"
+                android:cursorVisible="true"
                 android:theme="@style/AddressBarTheme" />
 
         </LinearLayout>
 
-    </ScrollView>
+    </FrameLayout>
 
     <!-- WebView -->
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
