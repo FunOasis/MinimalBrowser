@@ -134,7 +134,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        wv.addJavascriptInterface(object {
+        wv.addJavascriptInterface(object : Any() {
             @JavascriptInterface
             fun onPasswordDetected(username: String, password: String) {
                 runOnUiThread {
