@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.minimalbrowser.app-mergeDebugResources-37:/values-v18/values-v18.xml",
+            "map": [
+                {
+                    "source": "/data/data/com.termux/files/home/.gradle/caches/transforms-3/27dbf09f59ddd077b82e13ca070fb4db/transformed/appcompat-1.6.1/res/values-v18/values-v18.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "48",
+                        "endOffsets": "99"
+                    }
+                }
+            ]
+        }
+    ]
+}

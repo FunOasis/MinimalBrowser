@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="accent">#0F3460</color>
+    <color name="accent_light">#E94560</color>
+    <color name="on_surface">#1A1A2E</color>
+    <color name="primary">#1A1A2E</color>
+    <color name="primary_dark">#16213E</color>
+    <color name="surface">#FFFFFF</color>
+    <string name="app_name">P R S</string>
+    <style name="AddressBarTheme">
+        <item name="colorControlActivated">#FFFFFF</item>
+        <item name="colorControlHighlight">#FFFFFF</item>
+        <item name="android:textColorHint">#555555</item>
+    </style>
+    <style name="Theme.MinimalBrowser" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">#000000</item>
+        <item name="colorPrimaryDark">#000000</item>
+        <item name="colorAccent">#FFFFFF</item>
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+    </style>
+</resources>
