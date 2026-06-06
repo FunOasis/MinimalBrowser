@@ -7,7 +7,6 @@ import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.view.ViewTreeObserver
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.JavascriptInterface
@@ -32,10 +31,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tabManager: TabManager
     private var blockedCount = 0
     private var currentHost = ""
-    private var keyboardVisible = false
 
     companion object {
-        const val VERSION = "1.20"
+        const val VERSION = "1.30"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,23 +47,6 @@ class MainActivity : AppCompatActivity() {
             insets
         }
 
-        // Detect when keyboard is hidden by system gesture/back
-        // When it hides, clear focus from search bar so next tap re-triggers focus
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
-            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            if (!imeVisible && keyboardVisible) {
-                // Keyboard just got dismissed — clear search bar focus
-                // so the next tap properly re-triggers it
-                if (binding.homePage.visibility == View.VISIBLE) {
-                    binding.homeSearchBar.clearFocus()
-                    binding.homePage.requestFocus()
-                }
-            }
-            keyboardVisible = imeVisible
-            view.onApplyWindowInsets(insets.toWindowInsets()!!)
-            insets
-        }
-
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayShowTitleEnabled(false)
 
@@ -75,6 +56,7 @@ class MainActivity : AppCompatActivity() {
         tabManager      = TabManager(this)
 
         FilterUpdateWorker.schedule(this)
+        setupKeyboardDismissDetection()
         setupWebView()
         setupToolbarButtons()
         setupAddressBar()
@@ -90,6 +72,25 @@ class MainActivity : AppCompatActivity() {
             if (!intentUrl.isNullOrBlank() && !intentUrl.startsWith("prs://"))
                 loadUrl(intentUrl)
             else showHomePage()
+        }
+    }
+
+    /**
+     * Detect keyboard dismissed via global layout listener.
+     * When keyboard hides while on home page, we clear the search bar focus
+     * completely so the next tap re-triggers onFocusChangeListener freshly.
+     */
+    private fun setupKeyboardDismissDetection() {
+        val rootView = binding.root
+        rootView.viewTreeObserver.addOnGlobalLayoutListener {
+            val heightDiff = rootView.rootView.height - rootView.height
+            val keyboardShowing = heightDiff > 200
+            if (!keyboardShowing && binding.homePage.visibility == View.VISIBLE) {
+                // Keyboard just closed on home page
+                // Fully clear focus so next tap works
+                binding.homeSearchBar.clearFocus()
+                binding.homePage.requestFocus()
+            }
         }
     }
 
@@ -217,7 +218,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showKeyboard() {
+    fun showKeyboard() {
         binding.homeSearchBar.requestFocus()
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         imm.showSoftInput(binding.homeSearchBar, InputMethodManager.SHOW_FORCED)
@@ -230,7 +231,7 @@ class MainActivity : AppCompatActivity() {
         binding.pageTitle.text          = ""
         binding.blockedBadge.visibility = View.GONE
         blockedCount = 0
-        // Clear any stale focus first, then request fresh
+        // Clear first then show keyboard after layout pass
         binding.homeSearchBar.clearFocus()
         binding.homePage.post {
             showKeyboard()
@@ -240,9 +241,9 @@ class MainActivity : AppCompatActivity() {
     private fun hideHomePage() {
         binding.homePage.visibility = View.GONE
         binding.webView.visibility  = View.VISIBLE
+        binding.homeSearchBar.clearFocus()
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(binding.homeSearchBar.windowToken, 0)
-        binding.homeSearchBar.clearFocus()
     }
 
     private fun setupAddressBar() {
@@ -258,15 +259,18 @@ class MainActivity : AppCompatActivity() {
             if (hasFocus) binding.addressBar.selectAll()
         }
 
-        // Key fix: use setOnFocusChangeListener to detect tap
-        // After keyboard dismissed, focus is cleared so next tap triggers this
+        // When focus is gained (after clearFocus resets it), show keyboard
         binding.homeSearchBar.setOnFocusChangeListener { _, hasFocus ->
-            if (hasFocus) showKeyboard()
+            if (hasFocus) {
+                val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.showSoftInput(binding.homeSearchBar, InputMethodManager.SHOW_FORCED)
+            }
         }
 
-        // Also handle direct taps when already focused
+        // Direct tap when already focused
         binding.homeSearchBar.setOnClickListener {
-            showKeyboard()
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(binding.homeSearchBar, InputMethodManager.SHOW_FORCED)
         }
 
         binding.homeSearchBar.setOnEditorActionListener { _, actionId, event ->
