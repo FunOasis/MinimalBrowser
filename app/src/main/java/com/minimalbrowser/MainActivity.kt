@@ -6,10 +6,15 @@ import android.os.Bundle
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.webkit.*
+import android.webkit.JavascriptInterface
+import android.webkit.URLUtil
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
+import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -28,7 +33,6 @@ class MainActivity : AppCompatActivity() {
     private var blockedCount = 0
     private var currentHost = ""
 
-    // Version tracking
     companion object {
         const val VERSION = "1.10"
     }
@@ -54,6 +58,7 @@ class MainActivity : AppCompatActivity() {
 
         FilterUpdateWorker.schedule(this)
         setupWebView()
+        setupToolbarButtons()
         setupAddressBar()
         setupSwipeRefresh()
         setupBackHandler()
@@ -87,6 +92,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupToolbarButtons() {
+        binding.btnBack.setOnClickListener {
+            if (binding.webView.canGoBack()) binding.webView.goBack()
+        }
+        binding.btnForward.setOnClickListener {
+            if (binding.webView.canGoForward()) binding.webView.goForward()
+        }
+        binding.btnReload.setOnClickListener {
+            if (binding.homePage.visibility == View.VISIBLE) {
+                showKeyboardOnSearch()
+            } else {
+                binding.webView.reload()
+            }
+        }
+    }
+
     private fun setupWebView() {
         val wv = binding.webView
         wv.settings.apply {
@@ -107,7 +128,8 @@ class MainActivity : AppCompatActivity() {
 
         wv.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             try {
-                val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
+                val request = android.app.DownloadManager.Request(
+                    android.net.Uri.parse(url))
                 request.setMimeType(mimeType)
                 request.addRequestHeader("User-Agent", userAgent)
                 val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
@@ -121,7 +143,11 @@ class MainActivity : AppCompatActivity() {
                 dm.enqueue(request)
                 Toast.makeText(this, "Downloading $fileName", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
-                startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+                } catch (ex: Exception) {
+                    Toast.makeText(this, "Cannot open download", Toast.LENGTH_SHORT).show()
+                }
             }
         }
 
@@ -134,9 +160,14 @@ class MainActivity : AppCompatActivity() {
                         .setMessage("Save password for $currentHost?")
                         .setPositiveButton("Save") { _, _ ->
                             passwordManager.save(currentHost, username, password)
-                            Toast.makeText(this@MainActivity, "Password saved", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Password saved",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
-                        .setNegativeButton("Never", null).show()
+                        .setNegativeButton("Never", null)
+                        .show()
                 }
             }
         }, "PRSPasswordBridge")
@@ -170,19 +201,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showKeyboardOnSearch() {
+        binding.homeSearchBar.requestFocus()
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.showSoftInput(binding.homeSearchBar, InputMethodManager.SHOW_FORCED)
+    }
+
     fun showHomePage() {
-        binding.webView.visibility  = View.GONE
-        binding.homePage.visibility = View.VISIBLE
+        binding.webView.visibility      = View.GONE
+        binding.homePage.visibility     = View.VISIBLE
         binding.addressBar.setText("")
-        binding.pageTitle.text      = ""
+        binding.pageTitle.text          = ""
         binding.blockedBadge.visibility = View.GONE
         blockedCount = 0
-        // Focus search bar and show keyboard
-        binding.homeSearchBar.post {
-            binding.homeSearchBar.requestFocus()
-            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-            imm.showSoftInput(binding.homeSearchBar, InputMethodManager.SHOW_IMPLICIT)
-        }
+        binding.homePage.post { showKeyboardOnSearch() }
     }
 
     private fun hideHomePage() {
@@ -196,15 +228,24 @@ class MainActivity : AppCompatActivity() {
         binding.addressBar.setOnEditorActionListener { _, actionId, event ->
             if (actionId == EditorInfo.IME_ACTION_GO ||
                 event?.keyCode == KeyEvent.KEYCODE_ENTER) {
-                loadUrl(binding.addressBar.text.toString().trim()); true
+                loadUrl(binding.addressBar.text.toString().trim())
+                true
             } else false
         }
-        binding.btnGo.setOnClickListener {
-            loadUrl(binding.addressBar.text.toString().trim())
-        }
+
         binding.addressBar.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) binding.addressBar.selectAll()
         }
+
+        binding.homeSearchBar.setOnTouchListener { v, event ->
+            if (event.action == MotionEvent.ACTION_UP) {
+                v.requestFocus()
+                val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.showSoftInput(v, InputMethodManager.SHOW_FORCED)
+            }
+            false
+        }
+
         binding.homeSearchBar.setOnEditorActionListener { _, actionId, event ->
             if (actionId == EditorInfo.IME_ACTION_SEARCH ||
                 actionId == EditorInfo.IME_ACTION_GO ||
@@ -229,7 +270,8 @@ class MainActivity : AppCompatActivity() {
 
     fun loadUrl(input: String) {
         if (input.isBlank() || input.startsWith("prs://")) {
-            showHomePage(); return
+            showHomePage()
+            return
         }
         hideHomePage()
         val url = when {
@@ -237,7 +279,8 @@ class MainActivity : AppCompatActivity() {
             input.startsWith("https://") ||
             input.startsWith("file://")  -> input
             input.contains(".") && !input.contains(" ") -> "https://$input"
-            else -> "https://duckduckgo.com/?q=${android.net.Uri.encode(input)}&kae=d&k1=-1"
+            else -> "https://duckduckgo.com/?q=${
+                android.net.Uri.encode(input)}&kae=d&k1=-1"
         }
         blockedCount = 0
         binding.blockedBadge.visibility = View.GONE
@@ -248,7 +291,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun onPageStarted(url: String) {
         if (url.isBlank() || url.startsWith("prs://")) return
-        currentHost = try { java.net.URI(url).host ?: "" } catch (e: Exception) { "" }
+        currentHost = try {
+            java.net.URI(url).host ?: ""
+        } catch (e: Exception) { "" }
         runOnUiThread {
             binding.addressBar.setText(url)
             binding.btnBack.isEnabled    = binding.webView.canGoBack()
@@ -268,21 +313,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.browser_menu, menu); return true
+        menuInflater.inflate(R.menu.browser_menu, menu)
+        return true
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.menu_home      -> { showHomePage(); true }
-            R.id.menu_tabs      -> { startActivity(Intent(this, TabsActivity::class.java)); true }
-            R.id.menu_history   -> { startActivity(Intent(this, HistoryActivity::class.java)); true }
-            R.id.menu_passwords -> { startActivity(Intent(this, PasswordsActivity::class.java)); true }
-            R.id.menu_settings  -> { startActivity(Intent(this, SettingsActivity::class.java)); true }
+            R.id.menu_tabs      -> {
+                startActivity(Intent(this, TabsActivity::class.java)); true }
+            R.id.menu_history   -> {
+                startActivity(Intent(this, HistoryActivity::class.java)); true }
+            R.id.menu_passwords -> {
+                startActivity(Intent(this, PasswordsActivity::class.java)); true }
+            R.id.menu_settings  -> {
+                startActivity(Intent(this, SettingsActivity::class.java)); true }
             R.id.menu_stats     -> {
                 val s = adBlocker.stats()
                 Toast.makeText(this,
-                    "Blocked: $blockedCount requests\nRules: ${s.hosts} hosts · ${s.patterns} patterns",
-                    Toast.LENGTH_LONG).show(); true
+                    "Blocked: $blockedCount requests\n" +
+                    "Rules: ${s.hosts} hosts · ${s.patterns} patterns",
+                    Toast.LENGTH_LONG).show()
+                true
             }
             R.id.menu_desktop   -> {
                 val wv = binding.webView
@@ -291,30 +343,36 @@ class MainActivity : AppCompatActivity() {
                     wv.settings.userAgentString = ua.replace("Mobile", "")
                     item.title = "Mobile Site"
                 } else {
-                    wv.settings.userAgentString = WebSettings.getDefaultUserAgent(this)
+                    wv.settings.userAgentString =
+                        WebSettings.getDefaultUserAgent(this)
                     item.title = "Desktop Site"
                 }
-                wv.reload(); true
+                wv.reload()
+                true
             }
-            R.id.menu_about -> {
+            R.id.menu_about     -> {
                 AlertDialog.Builder(this)
                     .setTitle("P R S")
-                    .setMessage("My first browser project with Claude.\n\nBuilt with WebView + uBlock-style ad blocking.\n\nVersion $VERSION")
-                    .setPositiveButton("OK", null).show(); true
+                    .setMessage(
+                        "My first browser project with Claude.\n\n" +
+                        "Built with WebView + uBlock-style ad blocking.\n\n" +
+                        "Version $VERSION")
+                    .setPositiveButton("OK", null)
+                    .show()
+                true
             }
-            R.id.menu_exit -> {
+            R.id.menu_exit      -> {
                 AlertDialog.Builder(this)
                     .setTitle("Exit")
                     .setMessage("Are you sure you want to exit?")
                     .setPositiveButton("Exit") { _, _ -> finishAffinity() }
-                    .setNegativeButton("Cancel", null).show(); true
+                    .setNegativeButton("Cancel", null)
+                    .show()
+                true
             }
             else -> super.onOptionsItemSelected(item)
         }
     }
-
-    fun onNavBack(v: View)    { if (binding.webView.canGoBack())    binding.webView.goBack() }
-    fun onNavForward(v: View) { if (binding.webView.canGoForward()) binding.webView.goForward() }
 
     override fun onPause()  { super.onPause();  binding.webView.onPause() }
     override fun onResume() { super.onResume(); binding.webView.onResume() }
