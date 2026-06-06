@@ -7,6 +7,7 @@ import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewTreeObserver
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.JavascriptInterface
@@ -31,9 +32,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tabManager: TabManager
     private var blockedCount = 0
     private var currentHost = ""
+    private var keyboardVisible = false
 
     companion object {
-        const val VERSION = "1.10"
+        const val VERSION = "1.20"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,6 +46,23 @@ class MainActivity : AppCompatActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.appBarLayout) { view, insets ->
             val top = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
             view.updatePadding(top = top)
+            insets
+        }
+
+        // Detect when keyboard is hidden by system gesture/back
+        // When it hides, clear focus from search bar so next tap re-triggers focus
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            if (!imeVisible && keyboardVisible) {
+                // Keyboard just got dismissed — clear search bar focus
+                // so the next tap properly re-triggers it
+                if (binding.homePage.visibility == View.VISIBLE) {
+                    binding.homeSearchBar.clearFocus()
+                    binding.homePage.requestFocus()
+                }
+            }
+            keyboardVisible = imeVisible
+            view.onApplyWindowInsets(insets.toWindowInsets()!!)
             insets
         }
 
@@ -93,7 +112,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupToolbarButtons() {
-        // These are plain click listeners — not onClick XML — so they always work
         binding.btnBack.setOnClickListener {
             if (binding.webView.canGoBack()) binding.webView.goBack()
         }
@@ -161,9 +179,8 @@ class MainActivity : AppCompatActivity() {
                         .setMessage("Save password for $currentHost?")
                         .setPositiveButton("Save") { _, _ ->
                             passwordManager.save(currentHost, username, password)
-                            Toast.makeText(
-                                this@MainActivity, "Password saved",
-                                Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@MainActivity,
+                                "Password saved", Toast.LENGTH_SHORT).show()
                         }
                         .setNegativeButton("Never", null)
                         .show()
@@ -213,11 +230,10 @@ class MainActivity : AppCompatActivity() {
         binding.pageTitle.text          = ""
         binding.blockedBadge.visibility = View.GONE
         blockedCount = 0
-        // Show keyboard after layout is ready
+        // Clear any stale focus first, then request fresh
+        binding.homeSearchBar.clearFocus()
         binding.homePage.post {
-            binding.homeSearchBar.requestFocus()
-            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-            imm.showSoftInput(binding.homeSearchBar, InputMethodManager.SHOW_FORCED)
+            showKeyboard()
         }
     }
 
@@ -226,6 +242,7 @@ class MainActivity : AppCompatActivity() {
         binding.webView.visibility  = View.VISIBLE
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(binding.homeSearchBar.windowToken, 0)
+        binding.homeSearchBar.clearFocus()
     }
 
     private fun setupAddressBar() {
@@ -241,8 +258,13 @@ class MainActivity : AppCompatActivity() {
             if (hasFocus) binding.addressBar.selectAll()
         }
 
-        // Tap on home search bar always shows keyboard
-        // Using setOnClickListener is more reliable than OnTouchListener
+        // Key fix: use setOnFocusChangeListener to detect tap
+        // After keyboard dismissed, focus is cleared so next tap triggers this
+        binding.homeSearchBar.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) showKeyboard()
+        }
+
+        // Also handle direct taps when already focused
         binding.homeSearchBar.setOnClickListener {
             showKeyboard()
         }
