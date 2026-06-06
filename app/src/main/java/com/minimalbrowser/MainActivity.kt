@@ -20,6 +20,8 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.addCallback
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -244,7 +246,7 @@ class MainActivity : AppCompatActivity() {
                         .setTitle("Save Password?")
                         .setMessage("Save password for $currentHost?")
                         .setPositiveButton("Save") { _, _ ->
-                            passwordManager.save(currentHost, username, password)
+                            lifecycleScope.launch { passwordManager.save(currentHost, username, password) }
                             Toast.makeText(this@MainActivity,
                                 "Password saved", Toast.LENGTH_SHORT).show()
                         }
