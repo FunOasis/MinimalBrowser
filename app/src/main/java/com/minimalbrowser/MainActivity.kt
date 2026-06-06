@@ -37,7 +37,7 @@ class MainActivity : AppCompatActivity() {
     private var currentHost = ""
 
     companion object {
-        const val VERSION = "1.50"
+        const val VERSION = "1.60"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -206,6 +206,8 @@ class MainActivity : AppCompatActivity() {
             safeBrowsingEnabled              = true
             userAgentString                  = userAgentString.replace("wv", "")
             mediaPlaybackRequiresUserGesture = false
+            allowFileAccess = false
+            allowContentAccess = false
             databaseEnabled                  = true
         }
 

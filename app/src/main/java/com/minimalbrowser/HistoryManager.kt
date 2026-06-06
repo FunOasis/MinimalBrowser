@@ -4,15 +4,23 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-data class HistoryEntry(val id: Long, val url: String, val title: String, val timestamp: Long)
+data class HistoryEntry(
+    val id: Long,
+    val url: String,
+    val title: String,
+    val timestamp: Long
+)
 
 class HistoryManager(context: Context) {
 
     private val db: SQLiteDatabase
 
     companion object {
-        private const val TABLE = "history"
+        private const val TABLE    = "history"
+        private const val MAX_ROWS = 1000
     }
 
     init {
@@ -28,24 +36,19 @@ class HistoryManager(context: Context) {
                 """)
             }
             override fun onUpgrade(db: SQLiteDatabase, o: Int, n: Int) {
-                db.execSQL("DROP TABLE IF EXISTS $TABLE"); onCreate(db)
+                db.execSQL("DROP TABLE IF EXISTS $TABLE")
+                onCreate(db)
             }
         }.writableDatabase
     }
 
-    fun save(url: String, title: String) {
-        // Avoid duplicate consecutive entries
+    suspend fun save(url: String, title: String) = withContext(Dispatchers.IO) {
+        // Skip duplicates
         val cursor = db.rawQuery(
-            "SELECT id FROM $TABLE ORDER BY timestamp DESC LIMIT 1", null)
-        var lastUrl = ""
-        if (cursor.moveToFirst()) {
-            val id = cursor.getLong(0)
-            val c2 = db.query(TABLE, arrayOf("url"), "id=?", arrayOf(id.toString()), null, null, null)
-            if (c2.moveToFirst()) lastUrl = c2.getString(0)
-            c2.close()
-        }
+            "SELECT url FROM $TABLE ORDER BY timestamp DESC LIMIT 1", null)
+        val lastUrl = if (cursor.moveToFirst()) cursor.getString(0) else ""
         cursor.close()
-        if (lastUrl == url) return
+        if (lastUrl == url) return@withContext
 
         val cv = ContentValues().apply {
             put("url",       url)
@@ -54,11 +57,14 @@ class HistoryManager(context: Context) {
         }
         db.insert(TABLE, null, cv)
 
-        // Keep only last 1000 entries for RAM efficiency
-        db.execSQL("DELETE FROM $TABLE WHERE id NOT IN (SELECT id FROM $TABLE ORDER BY timestamp DESC LIMIT 1000)")
+        // Keep only last MAX_ROWS entries
+        db.execSQL("""
+            DELETE FROM $TABLE WHERE id NOT IN
+            (SELECT id FROM $TABLE ORDER BY timestamp DESC LIMIT $MAX_ROWS)
+        """)
     }
 
-    fun getAll(): List<HistoryEntry> {
+    suspend fun getAll(): List<HistoryEntry> = withContext(Dispatchers.IO) {
         val list = mutableListOf<HistoryEntry>()
         val cursor = db.query(TABLE, null, null, null, null, null, "timestamp DESC")
         while (cursor.moveToNext()) {
@@ -70,10 +76,14 @@ class HistoryManager(context: Context) {
             ))
         }
         cursor.close()
-        return list
+        list
     }
 
-    fun clear() { db.delete(TABLE, null, null) }
+    suspend fun clear() = withContext(Dispatchers.IO) {
+        db.delete(TABLE, null, null)
+    }
 
-    fun delete(id: Long) { db.delete(TABLE, "id=?", arrayOf(id.toString())) }
+    suspend fun delete(id: Long) = withContext(Dispatchers.IO) {
+        db.delete(TABLE, "id=?", arrayOf(id.toString()))
+    }
 }
