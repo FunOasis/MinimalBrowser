@@ -340,7 +340,7 @@ class MainActivity : AppCompatActivity() {
     private fun onPageFinished(url: String) {
         if (url.isBlank() || url.startsWith("prs://")) return
         val title = binding.webView.title ?: url
-        historyManager.save(url, title)
+        lifecycleScope.launch { historyManager.save(url, title) }
         runOnUiThread {
             binding.swipeRefresh.isRefreshing = false
             binding.btnBack.isEnabled    = binding.webView.canGoBack()
