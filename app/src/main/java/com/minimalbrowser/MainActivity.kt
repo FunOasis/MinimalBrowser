@@ -14,6 +14,7 @@ import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -33,7 +34,7 @@ class MainActivity : AppCompatActivity() {
     private var currentHost = ""
 
     companion object {
-        const val VERSION = "1.30"
+        const val VERSION = "1.40"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,7 +57,6 @@ class MainActivity : AppCompatActivity() {
         tabManager      = TabManager(this)
 
         FilterUpdateWorker.schedule(this)
-        setupKeyboardDismissDetection()
         setupWebView()
         setupToolbarButtons()
         setupAddressBar()
@@ -72,25 +72,6 @@ class MainActivity : AppCompatActivity() {
             if (!intentUrl.isNullOrBlank() && !intentUrl.startsWith("prs://"))
                 loadUrl(intentUrl)
             else showHomePage()
-        }
-    }
-
-    /**
-     * Detect keyboard dismissed via global layout listener.
-     * When keyboard hides while on home page, we clear the search bar focus
-     * completely so the next tap re-triggers onFocusChangeListener freshly.
-     */
-    private fun setupKeyboardDismissDetection() {
-        val rootView = binding.root
-        rootView.viewTreeObserver.addOnGlobalLayoutListener {
-            val heightDiff = rootView.rootView.height - rootView.height
-            val keyboardShowing = heightDiff > 200
-            if (!keyboardShowing && binding.homePage.visibility == View.VISIBLE) {
-                // Keyboard just closed on home page
-                // Fully clear focus so next tap works
-                binding.homeSearchBar.clearFocus()
-                binding.homePage.requestFocus()
-            }
         }
     }
 
@@ -121,11 +102,51 @@ class MainActivity : AppCompatActivity() {
         }
         binding.btnReload.setOnClickListener {
             if (binding.homePage.visibility == View.VISIBLE) {
-                showKeyboard()
+                showSearchDialog()
             } else {
                 binding.webView.reload()
             }
         }
+    }
+
+    /**
+     * Show a Dialog with an EditText for search input.
+     * This completely bypasses Android's focus/IME state machine issues.
+     * The dialog creates a fresh EditText every time — keyboard always appears.
+     */
+    private fun showSearchDialog() {
+        val input = EditText(this).apply {
+            hint = "Search or enter URL"
+            setTextColor(0xFFFFFFFF.toInt())
+            setHintTextColor(0xFF888888.toInt())
+            setSingleLine(true)
+            imeOptions = EditorInfo.IME_ACTION_GO
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                        android.text.InputType.TYPE_TEXT_VARIATION_URI
+            setPadding(48, 32, 48, 32)
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(input)
+            .create()
+
+        input.setOnEditorActionListener { _, actionId, event ->
+            if (actionId == EditorInfo.IME_ACTION_GO ||
+                event?.keyCode == KeyEvent.KEYCODE_ENTER) {
+                val q = input.text.toString().trim()
+                dialog.dismiss()
+                if (q.isNotBlank()) loadUrl(q)
+                true
+            } else false
+        }
+
+        dialog.setOnShowListener {
+            input.requestFocus()
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(input, InputMethodManager.SHOW_FORCED)
+        }
+
+        dialog.show()
     }
 
     private fun setupWebView() {
@@ -218,12 +239,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun showKeyboard() {
-        binding.homeSearchBar.requestFocus()
-        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.showSoftInput(binding.homeSearchBar, InputMethodManager.SHOW_FORCED)
-    }
-
     fun showHomePage() {
         binding.webView.visibility      = View.GONE
         binding.homePage.visibility     = View.VISIBLE
@@ -231,22 +246,15 @@ class MainActivity : AppCompatActivity() {
         binding.pageTitle.text          = ""
         binding.blockedBadge.visibility = View.GONE
         blockedCount = 0
-        // Clear first then show keyboard after layout pass
-        binding.homeSearchBar.clearFocus()
-        binding.homePage.post {
-            showKeyboard()
-        }
     }
 
     private fun hideHomePage() {
         binding.homePage.visibility = View.GONE
         binding.webView.visibility  = View.VISIBLE
-        binding.homeSearchBar.clearFocus()
-        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.hideSoftInputFromWindow(binding.homeSearchBar.windowToken, 0)
     }
 
     private fun setupAddressBar() {
+        // Address bar in toolbar — tap to search while browsing
         binding.addressBar.setOnEditorActionListener { _, actionId, event ->
             if (actionId == EditorInfo.IME_ACTION_GO ||
                 event?.keyCode == KeyEvent.KEYCODE_ENTER) {
@@ -254,36 +262,16 @@ class MainActivity : AppCompatActivity() {
                 true
             } else false
         }
-
         binding.addressBar.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) binding.addressBar.selectAll()
         }
 
-        // When focus is gained (after clearFocus resets it), show keyboard
-        binding.homeSearchBar.setOnFocusChangeListener { _, hasFocus ->
-            if (hasFocus) {
-                val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-                imm.showSoftInput(binding.homeSearchBar, InputMethodManager.SHOW_FORCED)
-            }
-        }
-
-        // Direct tap when already focused
+        // Home search bar — tapping it opens the dialog
+        // No focus/keyboard fighting — just a clean dialog every time
+        binding.homeSearchBar.isFocusable = false
+        binding.homeSearchBar.isFocusableInTouchMode = false
         binding.homeSearchBar.setOnClickListener {
-            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-            imm.showSoftInput(binding.homeSearchBar, InputMethodManager.SHOW_FORCED)
-        }
-
-        binding.homeSearchBar.setOnEditorActionListener { _, actionId, event ->
-            if (actionId == EditorInfo.IME_ACTION_SEARCH ||
-                actionId == EditorInfo.IME_ACTION_GO ||
-                event?.keyCode == KeyEvent.KEYCODE_ENTER) {
-                val q = binding.homeSearchBar.text.toString().trim()
-                if (q.isNotBlank()) {
-                    binding.homeSearchBar.setText("")
-                    loadUrl(q)
-                }
-                true
-            } else false
+            showSearchDialog()
         }
     }
 
@@ -301,6 +289,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
         hideHomePage()
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(binding.root.windowToken, 0)
+
         val url = when {
             input.startsWith("http://")  ||
             input.startsWith("https://") ||
