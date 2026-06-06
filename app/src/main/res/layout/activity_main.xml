@@ -19,7 +19,6 @@
             android:layout_height="60dp"
             android:background="#000000">
 
-            <!-- Back button -->
             <ImageButton
                 android:id="@+id/btnBack"
                 android:layout_width="44dp"
@@ -30,7 +29,6 @@
                 android:enabled="false"
                 android:tint="#FFFFFF" />
 
-            <!-- Forward button -->
             <ImageButton
                 android:id="@+id/btnForward"
                 android:layout_width="44dp"
@@ -42,7 +40,6 @@
                 android:layout_marginStart="4dp"
                 android:tint="#FFFFFF" />
 
-            <!-- Address bar -->
             <EditText
                 android:id="@+id/addressBar"
                 android:layout_width="0dp"
@@ -59,9 +56,6 @@
                 android:imeOptions="actionGo"
                 android:theme="@style/AddressBarTheme" />
 
-            <!-- Blocked badge overlaid on address bar — moved to separate FrameLayout -->
-
-            <!-- Reload button -->
             <ImageButton
                 android:id="@+id/btnReload"
                 android:layout_width="44dp"
@@ -73,7 +67,6 @@
 
         </androidx.appcompat.widget.Toolbar>
 
-        <!-- Blocked badge + page title row -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="20dp"
@@ -144,6 +137,7 @@
                 android:layout_marginBottom="48dp"
                 android:fontFamily="serif" />
 
+            <!-- Search bar — no cursor, tap shows keyboard -->
             <EditText
                 android:id="@+id/homeSearchBar"
                 android:layout_width="match_parent"
@@ -156,9 +150,9 @@
                 android:singleLine="true"
                 android:inputType="text"
                 android:imeOptions="actionSearch"
+                android:cursorVisible="false"
                 android:focusable="true"
                 android:focusableInTouchMode="true"
-                android:cursorVisible="true"
                 android:theme="@style/AddressBarTheme" />
 
         </LinearLayout>

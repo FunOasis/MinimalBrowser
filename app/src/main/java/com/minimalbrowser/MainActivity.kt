@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
-import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -69,7 +68,8 @@ class MainActivity : AppCompatActivity() {
             else showHomePage()
         } else {
             val intentUrl = intent?.data?.toString()
-            if (!intentUrl.isNullOrBlank() && !intentUrl.startsWith("prs://")) loadUrl(intentUrl)
+            if (!intentUrl.isNullOrBlank() && !intentUrl.startsWith("prs://"))
+                loadUrl(intentUrl)
             else showHomePage()
         }
     }
@@ -85,7 +85,7 @@ class MainActivity : AppCompatActivity() {
     private fun setupBackHandler() {
         onBackPressedDispatcher.addCallback(this) {
             when {
-                binding.homePage.visibility == View.VISIBLE -> { /* stay on home */ }
+                binding.homePage.visibility == View.VISIBLE -> { /* stay */ }
                 binding.webView.canGoBack() -> binding.webView.goBack()
                 else -> showHomePage()
             }
@@ -93,6 +93,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupToolbarButtons() {
+        // These are plain click listeners — not onClick XML — so they always work
         binding.btnBack.setOnClickListener {
             if (binding.webView.canGoBack()) binding.webView.goBack()
         }
@@ -101,7 +102,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.btnReload.setOnClickListener {
             if (binding.homePage.visibility == View.VISIBLE) {
-                showKeyboardOnSearch()
+                showKeyboard()
             } else {
                 binding.webView.reload()
             }
@@ -161,10 +162,8 @@ class MainActivity : AppCompatActivity() {
                         .setPositiveButton("Save") { _, _ ->
                             passwordManager.save(currentHost, username, password)
                             Toast.makeText(
-                                this@MainActivity,
-                                "Password saved",
-                                Toast.LENGTH_SHORT
-                            ).show()
+                                this@MainActivity, "Password saved",
+                                Toast.LENGTH_SHORT).show()
                         }
                         .setNegativeButton("Never", null)
                         .show()
@@ -201,7 +200,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showKeyboardOnSearch() {
+    private fun showKeyboard() {
         binding.homeSearchBar.requestFocus()
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         imm.showSoftInput(binding.homeSearchBar, InputMethodManager.SHOW_FORCED)
@@ -214,7 +213,12 @@ class MainActivity : AppCompatActivity() {
         binding.pageTitle.text          = ""
         binding.blockedBadge.visibility = View.GONE
         blockedCount = 0
-        binding.homePage.post { showKeyboardOnSearch() }
+        // Show keyboard after layout is ready
+        binding.homePage.post {
+            binding.homeSearchBar.requestFocus()
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(binding.homeSearchBar, InputMethodManager.SHOW_FORCED)
+        }
     }
 
     private fun hideHomePage() {
@@ -237,13 +241,10 @@ class MainActivity : AppCompatActivity() {
             if (hasFocus) binding.addressBar.selectAll()
         }
 
-        binding.homeSearchBar.setOnTouchListener { v, event ->
-            if (event.action == MotionEvent.ACTION_UP) {
-                v.requestFocus()
-                val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-                imm.showSoftInput(v, InputMethodManager.SHOW_FORCED)
-            }
-            false
+        // Tap on home search bar always shows keyboard
+        // Using setOnClickListener is more reliable than OnTouchListener
+        binding.homeSearchBar.setOnClickListener {
+            showKeyboard()
         }
 
         binding.homeSearchBar.setOnEditorActionListener { _, actionId, event ->
@@ -291,9 +292,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun onPageStarted(url: String) {
         if (url.isBlank() || url.startsWith("prs://")) return
-        currentHost = try {
-            java.net.URI(url).host ?: ""
-        } catch (e: Exception) { "" }
+        currentHost = try { java.net.URI(url).host ?: "" } catch (e: Exception) { "" }
         runOnUiThread {
             binding.addressBar.setText(url)
             binding.btnBack.isEnabled    = binding.webView.canGoBack()
@@ -343,8 +342,7 @@ class MainActivity : AppCompatActivity() {
                     wv.settings.userAgentString = ua.replace("Mobile", "")
                     item.title = "Mobile Site"
                 } else {
-                    wv.settings.userAgentString =
-                        WebSettings.getDefaultUserAgent(this)
+                    wv.settings.userAgentString = WebSettings.getDefaultUserAgent(this)
                     item.title = "Desktop Site"
                 }
                 wv.reload()
