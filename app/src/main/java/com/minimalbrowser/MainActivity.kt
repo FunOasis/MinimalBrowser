@@ -2,6 +2,8 @@ package com.minimalbrowser
 
 import android.app.AlertDialog
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.Menu
@@ -15,6 +17,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -34,7 +37,7 @@ class MainActivity : AppCompatActivity() {
     private var currentHost = ""
 
     companion object {
-        const val VERSION = "1.40"
+        const val VERSION = "1.50"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,7 +62,7 @@ class MainActivity : AppCompatActivity() {
         FilterUpdateWorker.schedule(this)
         setupWebView()
         setupToolbarButtons()
-        setupAddressBar()
+        setupClickListeners()
         setupSwipeRefresh()
         setupBackHandler()
 
@@ -102,33 +105,61 @@ class MainActivity : AppCompatActivity() {
         }
         binding.btnReload.setOnClickListener {
             if (binding.homePage.visibility == View.VISIBLE) {
-                showSearchDialog()
+                showSearchDialog(currentUrl = "")
             } else {
                 binding.webView.reload()
             }
         }
     }
 
+    private fun setupClickListeners() {
+        // Address bar TextView — tap opens search dialog pre-filled with current URL
+        binding.addressBar.setOnClickListener {
+            showSearchDialog(currentUrl = binding.addressBar.text.toString())
+        }
+        // Home search bar TextView — tap opens fresh search dialog
+        binding.homeSearchBar.setOnClickListener {
+            showSearchDialog(currentUrl = "")
+        }
+    }
+
     /**
-     * Show a Dialog with an EditText for search input.
-     * This completely bypasses Android's focus/IME state machine issues.
-     * The dialog creates a fresh EditText every time — keyboard always appears.
+     * Styled search dialog — always shows keyboard reliably.
+     * Pre-fills with currentUrl when editing address bar.
      */
-    private fun showSearchDialog() {
+    private fun showSearchDialog(currentUrl: String) {
         val input = EditText(this).apply {
-            hint = "Search or enter URL"
             setTextColor(0xFFFFFFFF.toInt())
-            setHintTextColor(0xFF888888.toInt())
+            setHintTextColor(0xFF666666.toInt())
+            setBackgroundColor(Color.TRANSPARENT)
             setSingleLine(true)
             imeOptions = EditorInfo.IME_ACTION_GO
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
                         android.text.InputType.TYPE_TEXT_VARIATION_URI
-            setPadding(48, 32, 48, 32)
+            setPadding(0, 16, 0, 16)
+            textSize = 16f
+            if (currentUrl.isNotBlank() && !currentUrl.startsWith("prs://")) {
+                setText(currentUrl)
+                selectAll()
+                hint = ""
+            } else {
+                hint = "Search or enter URL"
+            }
+        }
+
+        val container = FrameLayout(this).apply {
+            val pad = (20 * resources.displayMetrics.density).toInt()
+            setPadding(pad, 0, pad, 0)
+            addView(input)
         }
 
         val dialog = AlertDialog.Builder(this)
-            .setView(input)
+            .setView(container)
             .create()
+
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(0xFF111111.toInt()))
+        }
 
         input.setOnEditorActionListener { _, actionId, event ->
             if (actionId == EditorInfo.IME_ACTION_GO ||
@@ -146,7 +177,18 @@ class MainActivity : AppCompatActivity() {
             imm.showSoftInput(input, InputMethodManager.SHOW_FORCED)
         }
 
+        dialog.setOnDismissListener {
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(input.windowToken, 0)
+        }
+
         dialog.show()
+
+        // Make dialog wider
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.95).toInt(),
+            android.view.WindowManager.LayoutParams.WRAP_CONTENT
+        )
     }
 
     private fun setupWebView() {
@@ -242,7 +284,7 @@ class MainActivity : AppCompatActivity() {
     fun showHomePage() {
         binding.webView.visibility      = View.GONE
         binding.homePage.visibility     = View.VISIBLE
-        binding.addressBar.setText("")
+        binding.addressBar.text         = ""
         binding.pageTitle.text          = ""
         binding.blockedBadge.visibility = View.GONE
         blockedCount = 0
@@ -251,28 +293,6 @@ class MainActivity : AppCompatActivity() {
     private fun hideHomePage() {
         binding.homePage.visibility = View.GONE
         binding.webView.visibility  = View.VISIBLE
-    }
-
-    private fun setupAddressBar() {
-        // Address bar in toolbar — tap to search while browsing
-        binding.addressBar.setOnEditorActionListener { _, actionId, event ->
-            if (actionId == EditorInfo.IME_ACTION_GO ||
-                event?.keyCode == KeyEvent.KEYCODE_ENTER) {
-                loadUrl(binding.addressBar.text.toString().trim())
-                true
-            } else false
-        }
-        binding.addressBar.setOnFocusChangeListener { _, hasFocus ->
-            if (hasFocus) binding.addressBar.selectAll()
-        }
-
-        // Home search bar — tapping it opens the dialog
-        // No focus/keyboard fighting — just a clean dialog every time
-        binding.homeSearchBar.isFocusable = false
-        binding.homeSearchBar.isFocusableInTouchMode = false
-        binding.homeSearchBar.setOnClickListener {
-            showSearchDialog()
-        }
     }
 
     private fun setupSwipeRefresh() {
@@ -289,9 +309,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
         hideHomePage()
-        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.hideSoftInputFromWindow(binding.root.windowToken, 0)
-
         val url = when {
             input.startsWith("http://")  ||
             input.startsWith("https://") ||
@@ -303,15 +320,14 @@ class MainActivity : AppCompatActivity() {
         blockedCount = 0
         binding.blockedBadge.visibility = View.GONE
         binding.webView.loadUrl(url)
-        binding.addressBar.setText(url)
-        binding.addressBar.clearFocus()
+        binding.addressBar.text = url
     }
 
     private fun onPageStarted(url: String) {
         if (url.isBlank() || url.startsWith("prs://")) return
         currentHost = try { java.net.URI(url).host ?: "" } catch (e: Exception) { "" }
         runOnUiThread {
-            binding.addressBar.setText(url)
+            binding.addressBar.text      = url
             binding.btnBack.isEnabled    = binding.webView.canGoBack()
             binding.btnForward.isEnabled = binding.webView.canGoForward()
         }

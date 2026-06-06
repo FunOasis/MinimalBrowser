@@ -13,12 +13,23 @@
         android:background="#000000"
         app:elevation="0dp">
 
+        <!-- Toolbar only for menu/title — hidden visually -->
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:background="#000000">
+            android:layout_height="0dp"
+            android:background="#000000" />
 
+        <!-- Navigation row — outside Toolbar to avoid touch interception -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="#000000"
+            android:paddingHorizontal="4dp">
+
+            <!-- Back -->
             <ImageButton
                 android:id="@+id/btnBack"
                 android:layout_width="44dp"
@@ -29,6 +40,7 @@
                 android:enabled="false"
                 android:tint="#FFFFFF" />
 
+            <!-- Forward -->
             <ImageButton
                 android:id="@+id/btnForward"
                 android:layout_width="44dp"
@@ -37,10 +49,11 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Forward"
                 android:enabled="false"
-                android:layout_marginStart="4dp"
+                android:layout_marginStart="2dp"
                 android:tint="#FFFFFF" />
 
-            <EditText
+            <!-- Address bar — tappable, shows search dialog -->
+            <TextView
                 android:id="@+id/addressBar"
                 android:layout_width="0dp"
                 android:layout_height="40dp"
@@ -52,10 +65,25 @@
                 android:textColor="#FFFFFF"
                 android:hint="Search or enter URL"
                 android:singleLine="true"
-                android:inputType="textUri"
-                android:imeOptions="actionGo"
-                android:theme="@style/AddressBarTheme" />
+                android:ellipsize="end"
+                android:gravity="center_vertical"
+                android:clickable="true"
+                android:focusable="true" />
 
+            <!-- Blocked badge -->
+            <TextView
+                android:id="@+id/blockedBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="20dp"
+                android:background="@drawable/badge_bg"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:paddingHorizontal="6dp"
+                android:visibility="gone"
+                android:fontFamily="monospace"
+                android:gravity="center_vertical" />
+
+            <!-- Reload -->
             <ImageButton
                 android:id="@+id/btnReload"
                 android:layout_width="44dp"
@@ -65,38 +93,20 @@
                 android:contentDescription="Reload"
                 android:tint="#FFFFFF" />
 
-        </androidx.appcompat.widget.Toolbar>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="20dp"
-            android:orientation="horizontal"
-            android:paddingHorizontal="16dp"
-            android:gravity="center_vertical">
-
-            <TextView
-                android:id="@+id/pageTitle"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textSize="11sp"
-                android:textColor="#888888"
-                android:singleLine="true"
-                android:ellipsize="end" />
-
-            <TextView
-                android:id="@+id/blockedBadge"
-                android:layout_width="wrap_content"
-                android:layout_height="18dp"
-                android:background="@drawable/badge_bg"
-                android:textColor="#FFFFFF"
-                android:textSize="10sp"
-                android:paddingHorizontal="6dp"
-                android:visibility="gone"
-                android:fontFamily="monospace" />
-
         </LinearLayout>
 
+        <!-- Page title -->
+        <TextView
+            android:id="@+id/pageTitle"
+            android:layout_width="match_parent"
+            android:layout_height="20dp"
+            android:paddingHorizontal="16dp"
+            android:textSize="11sp"
+            android:textColor="#888888"
+            android:singleLine="true"
+            android:ellipsize="end" />
+
+        <!-- Progress bar -->
         <ProgressBar
             android:id="@+id/progressBar"
             style="@style/Widget.AppCompat.ProgressBar.Horizontal"
@@ -137,8 +147,8 @@
                 android:layout_marginBottom="48dp"
                 android:fontFamily="serif" />
 
-            <!-- Search bar — no cursor, tap shows keyboard -->
-            <EditText
+            <!-- Dummy search bar — tap opens dialog -->
+            <TextView
                 android:id="@+id/homeSearchBar"
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
@@ -147,13 +157,11 @@
                 android:textSize="15sp"
                 android:textColor="#FFFFFF"
                 android:hint="Search the web"
-                android:singleLine="true"
-                android:inputType="text"
-                android:imeOptions="actionSearch"
-                android:cursorVisible="false"
+                android:gravity="center_vertical"
+                android:clickable="true"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:theme="@style/AddressBarTheme" />
+                android:singleLine="true"
+                android:ellipsize="end" />
 
         </LinearLayout>
 
