@@ -2,9 +2,6 @@ package com.minimalbrowser
 
 import android.graphics.Bitmap
 import android.webkit.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 class BlockingWebViewClient(
     private val adBlocker: AdBlocker,
@@ -19,8 +16,6 @@ class BlockingWebViewClient(
 
     companion object {
         private val EMPTY_RESPONSE = WebResourceResponse("text/plain", "utf-8", null)
-
-        // Allowed URL schemes — block javascript:, file:, intent:, data: etc
         private val ALLOWED_SCHEMES = setOf("http", "https")
 
         private val WEBRTC_BLOCK_SCRIPT = """
@@ -59,9 +54,8 @@ class BlockingWebViewClient(
         view: WebView, request: WebResourceRequest
     ): WebResourceResponse? {
         val url = request.url.toString()
-
-        // Block disallowed schemes
         val scheme = request.url.scheme?.lowercase() ?: ""
+        
         if (scheme !in ALLOWED_SCHEMES) return EMPTY_RESPONSE
 
         if (adBlocker.isBlocked(url)) {
@@ -82,9 +76,7 @@ class BlockingWebViewClient(
             return true
         }
 
-        // Block dangerous schemes from navigation
         if (scheme !in ALLOWED_SCHEMES) return true
-
         return false
     }
 
@@ -96,23 +88,35 @@ class BlockingWebViewClient(
     override fun onPageFinished(view: WebView, url: String) {
         super.onPageFinished(view, url)
 
-        view.evaluateJavascript(WEBRTC_BLOCK_SCRIPT, null)
+        // Ensure ALL script evaluations are bound safely to the main message queue loop
+        view.post {
+            try {
+                view.evaluateJavascript(WEBRTC_BLOCK_SCRIPT, null)
 
-        val cosmetic = adBlocker.cosmeticScript()
-        if (cosmetic.isNotBlank()) view.evaluateJavascript(cosmetic, null)
+                val cosmetic = adBlocker.cosmeticScript()
+                if (cosmetic.isNotBlank()) view.evaluateJavascript(cosmetic, null)
 
-        // Autofill on IO then inject on main
-        CoroutineScope(Dispatchers.IO).launch {
-            val autofill = passwordManager.autofillScript(currentHost())
-            if (autofill.isNotBlank()) {
-                view.post { view.evaluateJavascript(autofill, null) }
+                view.evaluateJavascript(PASSWORD_DETECT_SCRIPT, null)
+
+                val userScript = customScript()
+                if (userScript.isNotBlank()) view.evaluateJavascript(userScript, null)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
 
-        view.evaluateJavascript(PASSWORD_DETECT_SCRIPT, null)
-
-        val userScript = customScript()
-        if (userScript.isNotBlank()) view.evaluateJavascript(userScript, null)
+        // Thread-safe async password extraction without leaking Coroutine contexts
+        val host = currentHost()
+        Thread {
+            try {
+                val autofill = passwordManager.autofillScript(host)
+                if (autofill.isNotBlank()) {
+                    view.post { view.evaluateJavascript(autofill, null) }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }.start()
 
         onPageFinished(url)
     }
