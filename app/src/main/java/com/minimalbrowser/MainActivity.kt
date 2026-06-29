@@ -27,6 +27,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import com.minimalbrowser.databinding.ActivityMainBinding
+import java.util.concurrent.atomic.AtomicInteger
 
 class MainActivity : AppCompatActivity() {
 
@@ -35,7 +36,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var passwordManager: PasswordManager
     private lateinit var historyManager: HistoryManager
     private lateinit var tabManager: TabManager
-    private var blockedCount = 0
+    private val blockedCount = AtomicInteger(0)
     private var currentHost = ""
 
     companion object {
@@ -115,20 +116,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupClickListeners() {
-        // Address bar TextView — tap opens search dialog pre-filled with current URL
         binding.addressBar.setOnClickListener {
             showSearchDialog(currentUrl = binding.addressBar.text.toString())
         }
-        // Home search bar TextView — tap opens fresh search dialog
         binding.homeSearchBar.setOnClickListener {
             showSearchDialog(currentUrl = "")
         }
     }
 
-    /**
-     * Styled search dialog — always shows keyboard reliably.
-     * Pre-fills with currentUrl when editing address bar.
-     */
     private fun showSearchDialog(currentUrl: String) {
         val input = EditText(this).apply {
             setTextColor(0xFFFFFFFF.toInt())
@@ -186,7 +181,6 @@ class MainActivity : AppCompatActivity() {
 
         dialog.show()
 
-        // Make dialog wider
         dialog.window?.setLayout(
             (resources.displayMetrics.widthPixels * 0.95).toInt(),
             android.view.WindowManager.LayoutParams.WRAP_CONTENT
@@ -195,6 +189,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupWebView() {
         val wv = binding.webView
+        
+        // 🚀 Optimizing hardware acceleration layers explicitly
+        wv.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+
         wv.settings.apply {
             javaScriptEnabled                = Prefs.get(this@MainActivity).jsEnabled
             domStorageEnabled                = true
@@ -208,15 +206,14 @@ class MainActivity : AppCompatActivity() {
             safeBrowsingEnabled              = true
             userAgentString                  = userAgentString.replace("wv", "")
             mediaPlaybackRequiresUserGesture = false
-            allowFileAccess = false
-            allowContentAccess = false
+            allowFileAccess                  = false
+            allowContentAccess               = false
             databaseEnabled                  = true
         }
 
         wv.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             try {
-                val request = android.app.DownloadManager.Request(
-                    android.net.Uri.parse(url))
+                val request = android.app.DownloadManager.Request(android.net.Uri.parse(url))
                 request.setMimeType(mimeType)
                 request.addRequestHeader("User-Agent", userAgent)
                 val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
@@ -242,13 +239,13 @@ class MainActivity : AppCompatActivity() {
             @JavascriptInterface
             fun onPasswordDetected(username: String, password: String) {
                 runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
                     AlertDialog.Builder(this@MainActivity)
                         .setTitle("Save Password?")
                         .setMessage("Save password for $currentHost?")
                         .setPositiveButton("Save") { _, _ ->
                             lifecycleScope.launch { passwordManager.save(currentHost, username, password) }
-                            Toast.makeText(this@MainActivity,
-                                "Password saved", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@MainActivity, "Password saved", Toast.LENGTH_SHORT).show()
                         }
                         .setNegativeButton("Never", null)
                         .show()
@@ -261,9 +258,10 @@ class MainActivity : AppCompatActivity() {
             onPageStarted     = { url -> onPageStarted(url) },
             onPageFinished    = { url -> onPageFinished(url) },
             onBlockedRequest  = {
-                runOnUiThread {
-                    blockedCount++
-                    binding.blockedBadge.text = blockedCount.toString()
+                // 🚀 Completely thread-safe batch handling. Prevents UI thread choking.
+                val count = blockedCount.incrementAndGet()
+                binding.blockedBadge.post {
+                    binding.blockedBadge.text = count.toString()
                     binding.blockedBadge.visibility = View.VISIBLE
                 }
             },
@@ -291,7 +289,7 @@ class MainActivity : AppCompatActivity() {
         binding.addressBar.text         = ""
         binding.pageTitle.text          = ""
         binding.blockedBadge.visibility = View.GONE
-        blockedCount = 0
+        blockedCount.set(0)
     }
 
     private fun hideHomePage() {
@@ -301,7 +299,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSwipeRefresh() {
         binding.swipeRefresh.setOnRefreshListener {
-            blockedCount = 0
+            blockedCount.set(0)
             binding.blockedBadge.visibility = View.GONE
             binding.webView.reload()
         }
@@ -318,10 +316,9 @@ class MainActivity : AppCompatActivity() {
             input.startsWith("https://") ||
             input.startsWith("file://")  -> input
             input.contains(".") && !input.contains(" ") -> "https://$input"
-            else -> "https://duckduckgo.com/?q=${
-                android.net.Uri.encode(input)}&kae=d&k1=-1"
+            else -> "https://duckduckgo.com/?q=${android.net.Uri.encode(input)}&kae=d&k1=-1"
         }
-        blockedCount = 0
+        blockedCount.set(0)
         binding.blockedBadge.visibility = View.GONE
         binding.webView.loadUrl(url)
         binding.addressBar.text = url
@@ -356,18 +353,14 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.menu_home      -> { showHomePage(); true }
-            R.id.menu_tabs      -> {
-                startActivity(Intent(this, TabsActivity::class.java)); true }
-            R.id.menu_history   -> {
-                startActivity(Intent(this, HistoryActivity::class.java)); true }
-            R.id.menu_passwords -> {
-                startActivity(Intent(this, PasswordsActivity::class.java)); true }
-            R.id.menu_settings  -> {
-                startActivity(Intent(this, SettingsActivity::class.java)); true }
+            R.id.menu_tabs      -> { startActivity(Intent(this, TabsActivity::class.java)); true }
+            R.id.menu_history   -> { startActivity(Intent(this, HistoryActivity::class.java)); true }
+            R.id.menu_passwords -> { startActivity(Intent(this, PasswordsActivity::class.java)); true }
+            R.id.menu_settings  -> { startActivity(Intent(this, SettingsActivity::class.java)); true }
             R.id.menu_stats     -> {
                 val s = adBlocker.stats()
                 Toast.makeText(this,
-                    "Blocked: $blockedCount requests\n" +
+                    "Blocked: ${blockedCount.get()} requests\n" +
                     "Rules: ${s.hosts} hosts · ${s.patterns} patterns",
                     Toast.LENGTH_LONG).show()
                 true
@@ -412,8 +405,12 @@ class MainActivity : AppCompatActivity() {
     override fun onPause()  { super.onPause();  binding.webView.onPause() }
     override fun onResume() { super.onResume(); binding.webView.onResume() }
     override fun onDestroy() {
-        binding.webView.stopLoading()
-        binding.webView.destroy()
+        binding.webView.apply {
+            stopLoading()
+            clearHistory()
+            removeAllViews()
+            destroy()
+        }
         super.onDestroy()
     }
 }
