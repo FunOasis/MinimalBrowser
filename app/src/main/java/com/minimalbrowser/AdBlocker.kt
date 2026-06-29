@@ -9,16 +9,14 @@ import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.URI
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 class AdBlocker private constructor(private val context: Context) {
 
-    // Constants
     companion object {
         private const val TAG              = "AdBlocker"
-        private const val HOST_CAPACITY    = 100_000
-        private const val PATTERN_CAPACITY = 5_000
-        private const val COSMETIC_CAP     = 500
-        private const val CACHE_SIZE       = 5_000
+        private const val CACHE_SIZE       = 4_000
 
         @Volatile private var instance: AdBlocker? = null
 
@@ -30,25 +28,22 @@ class AdBlocker private constructor(private val context: Context) {
         fun reset() { instance = null }
     }
 
-    private val blockedHosts    = HashSet<String>(HOST_CAPACITY)
-    private val urlPatterns     = ArrayList<String>(PATTERN_CAPACITY)
-    private val cosmeticRules   = ArrayList<String>(COSMETIC_CAP)
-    private val dynamicFilters  = ArrayList<Regex>()  // precompiled
+    // Thread-safe Concurrent Collection Sets
+    private val blockedHosts    = ConcurrentHashMap.newKeySet<String>(50_000)
+    private val urlPatterns     = CopyOnWriteArrayList<String>()
+    private val cosmeticRules   = CopyOnWriteArrayList<String>()
+    private val dynamicFilters  = CopyOnWriteArrayList<Regex>()
 
-    // LruCache — avoids re-evaluating same URL repeatedly
+    // Localized Thread-Safe Memory Cache
     private val decisionCache   = LruCache<String, Boolean>(CACHE_SIZE)
 
     init {
-        // Load on IO thread — don't block startup
         CoroutineScope(Dispatchers.IO).launch {
             loadHosts(context)
             loadPatterns(context)
             loadCosmetic(context)
             loadCustomFilters()
-            Log.i(TAG, "Loaded ${blockedHosts.size} hosts, " +
-                "${urlPatterns.size} patterns, " +
-                "${cosmeticRules.size} cosmetic, " +
-                "${dynamicFilters.size} dynamic")
+            Log.i(TAG, "Loaded structurally optimized rulesets.")
         }
     }
 
@@ -65,8 +60,10 @@ class AdBlocker private constructor(private val context: Context) {
 
     private fun loadPatterns(ctx: Context) {
         readAssetLines(ctx, "filters.txt") { line ->
-            if (line.isNotBlank() && !line.startsWith('#') && !line.startsWith('!'))
-                urlPatterns.add(line.trim().lowercase())
+            val t = line.trim().lowercase()
+            if (t.isNotBlank() && !t.startsWith('#') && !t.startsWith('!')) {
+                urlPatterns.add(t)
+            }
         }
     }
 
@@ -78,16 +75,17 @@ class AdBlocker private constructor(private val context: Context) {
     }
 
     private fun loadCustomFilters() {
-        Prefs.get(context).customFilters.lines().forEach { line ->
+        val prefs = Prefs.get(context).customFilters
+        if (prefs.isBlank()) return
+        prefs.lines().forEach { line ->
             val t = line.trim()
             if (t.isBlank() || t.startsWith('#')) return@forEach
             if (t.contains("/") || t.contains("*")) {
-                // Precompile regex once
                 try {
                     val pattern = t.replace(".", "\\.").replace("*", ".*")
-                    dynamicFilters.add(Regex(pattern))
+                    dynamicFilters.add(Regex(pattern, RegexOption.IGNORE_CASE))
                 } catch (e: Exception) {
-                    Log.w(TAG, "Invalid filter pattern: $t")
+                    Log.w(TAG, "Invalid filter: $t")
                 }
             } else {
                 blockedHosts.add(t.lowercase())
@@ -97,20 +95,26 @@ class AdBlocker private constructor(private val context: Context) {
 
     fun reloadCustomFilters() {
         dynamicFilters.clear()
-        decisionCache.evictAll()
+        synchronized(decisionCache) {
+            decisionCache.evictAll()
+        }
         loadCustomFilters()
     }
 
     fun isBlocked(url: String): Boolean {
         if (url.isBlank()) return false
 
-        // Check cache first
-        decisionCache.get(url)?.let { return it }
+        // Cache reads must be thread-isolated cleanly
+        synchronized(decisionCache) {
+            decisionCache.get(url)?.let { return it }
+        }
 
         val lower = url.lowercase()
         val result = checkBlocked(lower)
 
-        decisionCache.put(url, result)
+        synchronized(decisionCache) {
+            decisionCache.put(url, result)
+        }
         return result
     }
 
@@ -118,11 +122,15 @@ class AdBlocker private constructor(private val context: Context) {
         val host = extractHost(lower)
         if (host != null && isHostBlocked(host)) return true
 
-        for (pattern in urlPatterns) {
+        // Fast match substring checks
+        for (i in 0 until urlPatterns.size) {
+            val pattern = urlPatterns.getOrNull(i) ?: break
             if (lower.contains(pattern)) return true
         }
 
-        for (regex in dynamicFilters) {
+        // Fast match dynamic token checks
+        for (i in 0 until dynamicFilters.size) {
+            val regex = dynamicFilters.getOrNull(i) ?: break
             if (regex.containsMatchIn(lower)) return true
         }
 
@@ -142,10 +150,18 @@ class AdBlocker private constructor(private val context: Context) {
         if (css.isBlank()) return ""
         return """
             (function() {
+                if (window.prsCosmeticApplied) return;
+                window.prsCosmeticApplied = true;
                 var s = document.createElement('style');
                 s.type = 'text/css';
                 s.innerHTML = "$css";
-                if (document.head) document.head.appendChild(s);
+                if (document.head) {
+                    document.head.appendChild(s);
+                } else {
+                    document.addEventListener('DOMContentLoaded', function() {
+                        if (document.head) document.head.appendChild(s);
+                    });
+                }
             })();
         """.trimIndent()
     }
@@ -162,18 +178,25 @@ class AdBlocker private constructor(private val context: Context) {
 
     private fun extractHost(url: String): String? {
         return try {
-            URI(url).host?.lowercase()
+            val uri = URI(url)
+            uri.host?.lowercase() ?: extractFallbackHost(url)
         } catch (e: Exception) {
-            val start = url.indexOf("://")
-            if (start == -1) return null
-            url.substring(start + 3).split("/", "?", "#", ":").firstOrNull()?.lowercase()
+            extractFallbackHost(url)
         }
+    }
+
+    private fun extractFallbackHost(url: String): String? {
+        val start = url.indexOf("://")
+        if (start == -1) return null
+        return url.substring(start + 3).split("/", "?", "#", ":").firstOrNull()?.lowercase()
     }
 
     private fun readAssetLines(ctx: Context, file: String, action: (String) -> Unit) {
         try {
             ctx.assets.open(file).use { stream ->
-                BufferedReader(InputStreamReader(stream)).forEachLine(action)
+                BufferedReader(InputStreamReader(stream), 16384).use { reader ->
+                    reader.forEachLine(action)
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Could not load $file: ${e.message}")
