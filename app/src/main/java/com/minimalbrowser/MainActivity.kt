@@ -39,7 +39,7 @@ class MainActivity : AppCompatActivity() {
     private var currentHost = ""
 
     companion object {
-        const val VERSION = "1.60"
+        const val VERSION = "1.70"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
