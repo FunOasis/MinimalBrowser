@@ -2,6 +2,9 @@ package com.minimalbrowser
 
 import android.graphics.Bitmap
 import android.webkit.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class BlockingWebViewClient(
     private val adBlocker: AdBlocker,
@@ -88,7 +91,7 @@ class BlockingWebViewClient(
     override fun onPageFinished(view: WebView, url: String) {
         super.onPageFinished(view, url)
 
-        // Ensure ALL script evaluations are bound safely to the main message queue loop
+        // Ensure UI script evaluations run safely bound to main loop queue
         view.post {
             try {
                 view.evaluateJavascript(WEBRTC_BLOCK_SCRIPT, null)
@@ -105,9 +108,9 @@ class BlockingWebViewClient(
             }
         }
 
-        // Thread-safe async password extraction without leaking Coroutine contexts
+        // Handles the suspend function inside a safe Dispatchers.IO coroutine context
         val host = currentHost()
-        Thread {
+        CoroutineScope(Dispatchers.IO).launch {
             try {
                 val autofill = passwordManager.autofillScript(host)
                 if (autofill.isNotBlank()) {
@@ -116,7 +119,7 @@ class BlockingWebViewClient(
             } catch (e: Exception) {
                 e.printStackTrace()
             }
-        }.start()
+        }
 
         onPageFinished(url)
     }
